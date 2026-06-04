@@ -1,0 +1,1659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Sales Report — Sir Ramos Drugstore</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --main-accent: #4f46e5;
+      --branch-accent: #0891b2;
+      --surface: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--surface); color: var(--text); }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+
+    /* ── Page Tabs ── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Nav ── */
+    .nav-tab { cursor: pointer; padding: 8px 18px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: all .15s; color: var(--muted); }
+    .nav-tab.active { background: var(--main-accent); color: #fff; }
+    .nav-tab:hover:not(.active) { background: #e0e7ff; color: var(--main-accent); }
+
+    /* ── Store badge ── */
+    .badge-main   { background: #e0e7ff; color: #4f46e5; }
+    .badge-branch { background: #cffafe; color: #0891b2; }
+    .store-badge  { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .03em; }
+
+    /* ── Inputs ── */
+    .field { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: 'DM Sans', sans-serif; font-size: 14px; background: #fff; transition: border-color .15s; outline: none; }
+    .field:focus { border-color: var(--main-accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+    label.lbl { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 9px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all .15s; border: none; }
+    .btn-primary  { background: var(--main-accent); color: #fff; }
+    .btn-primary:hover  { background: #4338ca; }
+    .btn-cyan     { background: #0891b2; color: #fff; }
+    .btn-cyan:hover { background: #0e7490; }
+    .btn-green    { background: #16a34a; color: #fff; }
+    .btn-green:hover { background: #15803d; }
+    .btn-dark     { background: #1e293b; color: #fff; }
+    .btn-dark:hover { background: #0f172a; }
+    .btn-red      { background: #ef4444; color: #fff; }
+    .btn-red:hover { background: #dc2626; }
+    .btn-ghost    { background: transparent; color: var(--muted); border: 1.5px solid var(--border); }
+    .btn-ghost:hover { background: #f1f5f9; }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── Card ── */
+    .card { background: var(--card); border-radius: 12px; border: 1.5px solid var(--border); padding: 20px; }
+
+    /* ── Status boxes ── */
+    .status-balanced { background:#f0fdf4; border:2px solid #22c55e; }
+    .status-excess   { background:#eff6ff; border:2px solid #3b82f6; }
+    .status-lapse    { background:#fef2f2; border:2px solid #ef4444; }
+
+    /* ── History table ── */
+    .hist-row { cursor: pointer; transition: background .1s; }
+    .hist-row:hover { background: #f1f5f9; }
+
+    /* ── Toast ── */
+    #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px); background:#1e293b; color:#fff; padding:10px 22px; border-radius:10px; font-size:14px; font-weight:600; z-index:9999; transition:transform .3s ease; pointer-events:none; }
+    #toast.show { transform:translateX(-50%) translateY(0); }
+
+    /* ── Modal ── */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1000; display:none; align-items:center; justify-content:center; padding:1rem; }
+    .modal-overlay.open { display:flex; }
+    .modal-box { background:#fff; border-radius:14px; padding:24px; max-width:460px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.25); }
+
+    /* ── Spinner ── */
+    .spin { width:18px; height:18px; border:2.5px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── Firebase loading ── */
+    #firebaseStatus { font-size:12px; padding: 4px 10px; border-radius:6px; font-weight:600; }
+    #firebaseStatus.ok   { background:#dcfce7; color:#16a34a; }
+    #firebaseStatus.err  { background:#fee2e2; color:#dc2626; }
+    #firebaseStatus.wait { background:#fef9c3; color:#ca8a04; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:3px; }
+
+    @media (max-width: 768px) {
+      .sidebar-wrap { position: static !important; width: 100% !important; }
+    }
+
+    /* ── Login Gate ── */
+    #loginGate {
+      position: fixed; inset: 0; z-index: 9000;
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #1e3a5f 100%);
+      display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+      transition: opacity .35s ease;
+    }
+    #loginGate.hidden { opacity: 0; pointer-events: none; }
+    .login-card {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(18px);
+      border-radius: 20px;
+      padding: 40px 36px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.5);
+    }
+    .login-card .field {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    .login-card .field::placeholder { color: rgba(255,255,255,0.45); }
+    .login-card .field:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,.25); }
+    .login-card label.lbl { color: rgba(255,255,255,0.7); }
+    #loginError { background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.5); color: #fca5a5; border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    .login-dots { display: flex; gap: 6px; margin-bottom: 28px; }
+    .login-dot  { width: 8px; height: 8px; border-radius: 50%; background: #818cf8; opacity: .4; }
+    .login-dot.active { opacity: 1; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+
+    /* ── App wrapper hidden until login ── */
+    #appWrapper { display: none; }
+    #appWrapper.visible { display: block; }
+
+    /* ── Logged-in user pill in nav ── */
+    #loggedInUser { font-size: 12px; font-weight: 600; background: #e0e7ff; color: #4338ca; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+    #loggedInUser:hover { background: #c7d2fe; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  LOGIN GATE                                    -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="loginGate">
+  <div class="login-card">
+    <!-- Logo / Brand -->
+    <div class="flex items-center gap-3 mb-6">
+      <div id="loginLogoWrap" style="background:rgba(129,140,248,.2);border:1px solid rgba(129,140,248,.4);border-radius:12px;padding:10px;flex-shrink:0;">
+        <svg id="loginLogoSvg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2.2">
+          <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+        </svg>
+        <img id="loginLogoImg" src="" alt="Logo" style="display:none;width:44px;height:44px;object-fit:contain;border-radius:6px;">
+      </div>
+      <div>
+        <p class="font-bold text-white text-lg leading-tight">Sir Ramos Drugstore</p>
+        <p class="text-xs" style="color:rgba(255,255,255,.5);">Daily Sales Report</p>
+      </div>
+    </div>
+
+    <div class="login-dots">
+      <div class="login-dot active"></div>
+      <div class="login-dot"></div>
+      <div class="login-dot"></div>
+    </div>
+
+    <h2 class="text-white font-bold text-xl mb-1">Welcome back</h2>
+    <p class="text-sm mb-6" style="color:rgba(255,255,255,.5);">Sign in to access the sales dashboard.</p>
+
+    <div class="space-y-4">
+      <div>
+        <label class="lbl">Username</label>
+        <input type="text" id="loginUsername" class="field" placeholder="Enter username" autocomplete="username"
+               onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
+      </div>
+      <div>
+        <label class="lbl">Password</label>
+        <div class="relative">
+          <input type="password" id="loginPassword" class="field pr-10" placeholder="Enter password" autocomplete="current-password"
+                 onkeydown="if(event.key==='Enter')doLogin()">
+          <button onclick="toggleLoginPw()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:rgba(255,255,255,.5);" id="loginPwToggle">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="loginError" class="hidden"></div>
+      <button onclick="doLogin()" id="loginBtn" class="btn btn-primary w-full justify-center" style="padding:12px;font-size:15px;">
+        <span id="loginBtnText">Sign In</span>
+      </button>
+    </div>
+
+    <p class="text-center text-xs mt-6" style="color:rgba(255,255,255,.3);">🔒 Access is restricted to authorized staff only.</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  APP WRAPPER (hidden until logged in)          -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="appWrapper">
+
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ── NAVBAR ── -->
+<nav class="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4 flex-wrap">
+    <div class="flex items-center gap-2 mr-4">
+      <div id="navLogoWrap" style="display:flex;align-items:center;justify-content:center;">
+        <svg id="navLogoSvg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.2">
+          <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm-8 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+        </svg>
+        <img id="navLogoImg" src="" alt="Logo" style="display:none;width:32px;height:32px;object-fit:contain;border-radius:6px;">
+      </div>
+      <span class="font-bold text-slate-800 text-base leading-tight">Sir Ramos<br><span class="text-xs font-normal text-slate-500">Daily Sales</span></span>
+    </div>
+    <div class="flex gap-1 flex-wrap">
+      <div class="nav-tab active" onclick="showPage('report')">📋 Report</div>
+      <div class="nav-tab" onclick="showPage('history')">📂 History</div>
+      <div class="nav-tab" onclick="showPage('admin')">⚙️ Admin</div>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <span id="firebaseStatus" class="wait">⏳ Connecting…</span>
+      <span id="loggedInUser" onclick="doLogout()" title="Click to sign out">👤 —</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  PAGE: REPORT                                  -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="page-report" class="page active max-w-7xl mx-auto px-4 py-6">
+  <div class="flex gap-6 items-start flex-wrap lg:flex-nowrap">
+
+    <!-- ── Main Form ── -->
+    <div class="flex-1 min-w-0 space-y-5">
+
+      <!-- Store Selector -->
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <p class="font-bold text-slate-700">Store Location</p>
+          <span id="storeBadgeForm" class="store-badge badge-main">MAIN</span>
+        </div>
+        <select id="storeSelect" onchange="onStoreChange()" class="field font-semibold">
+          <option value="MAIN">MAIN Store</option>
+          <option value="BRANCH">BRANCH Store</option>
+        </select>
+        <p id="prevClosingNote" class="text-xs text-green-700 mt-2 hidden"></p>
+      </div>
+
+      <!-- Date -->
+      <div class="card">
+        <label class="lbl">📅 Date</label>
+        <input type="date" id="date" class="field" onchange="checkExistingReport()">
+        <p id="existingReportNote" class="text-xs text-amber-600 mt-2 hidden font-semibold">⚠️ A report already exists for this date/store. Saving will overwrite it.</p>
+      </div>
+
+      <!-- Opening Cash -->
+      <div class="card">
+        <label class="lbl">Opening Cash (₱)</label>
+        <div class="relative">
+          <input type="number" id="openingCash" placeholder="0.00" class="field pr-36" oninput="calculateReport()">
+          <span id="prevClosingBadge" class="hidden absolute right-2 top-1.5 text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-semibold">From prev. closing</span>
+        </div>
+      </div>
+
+      <!-- Sales / GCash -->
+      <div class="card grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="lbl">Total Sales (₱)</label>
+          <input type="number" id="sales" placeholder="0.00" class="field" oninput="calculateReport()">
+        </div>
+        <div>
+          <label class="lbl">GCash Payments (₱)</label>
+          <input type="number" id="gcash" placeholder="0.00" class="field" oninput="calculateReport()">
+        </div>
+      </div>
+
+      <!-- Expenses -->
+      <div class="card">
+        <div class="flex justify-between items-center mb-3">
+          <label class="font-bold text-slate-700">Expenses</label>
+          <button onclick="addExpense()" class="btn btn-primary text-sm py-1.5 px-3">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Row
+          </button>
+        </div>
+        <div id="expensesList"></div>
+      </div>
+
+      <!-- Bills -->
+      <div class="card">
+        <h2 class="font-bold text-slate-700 mb-3">💵 Cash Count — Bills</h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div><label class="lbl">₱1000</label><input type="number" id="bill1000" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱500</label><input type="number" id="bill500" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱200</label><input type="number" id="bill200" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱100</label><input type="number" id="bill100" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱50</label><input type="number" id="bill50" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱20</label><input type="number" id="bill20" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+        </div>
+      </div>
+
+      <!-- Coins -->
+      <div class="card">
+        <h2 class="font-bold text-slate-700 mb-3">🪙 Cash Count — Coins</h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div><label class="lbl">₱10</label><input type="number" id="coin10" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱5</label><input type="number" id="coin5" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+          <div><label class="lbl">₱1</label><input type="number" id="coin1" placeholder="Count" class="field mono" oninput="calculateReport()"></div>
+        </div>
+      </div>
+
+      <!-- Additional Expenses -->
+      <div class="card border-amber-300 bg-amber-50">
+        <div class="flex justify-between items-center mb-3">
+          <label class="font-bold text-amber-800">Additional Expenses <span class="font-normal text-xs">(deducted from remittance)</span></label>
+          <button onclick="addAdditionalExpense()" class="btn text-sm py-1.5 px-3" style="background:#d97706;color:#fff;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add
+          </button>
+        </div>
+        <div id="additionalExpensesList"></div>
+      </div>
+
+      <!-- Notes -->
+      <div class="card">
+        <label class="lbl">📝 Notes / Remarks</label>
+        <textarea id="notes" rows="2" placeholder="Optional notes for this report…" class="field resize-none" style="resize:vertical;"></textarea>
+      </div>
+    </div>
+
+    <!-- ── Sidebar Summary ── -->
+    <div class="w-full lg:w-80 flex-shrink-0 lg:sticky lg:top-20 self-start space-y-4">
+
+      <!-- Snapshot card (captured for JPG) -->
+      <div id="reportSnapshot" class="card border-2 border-indigo-200 bg-gradient-to-b from-indigo-50 to-blue-50">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-bold text-slate-800 text-lg">Sales Summary</h2>
+          <span id="reportStoreBadge" class="store-badge badge-main">MAIN</span>
+        </div>
+        <p id="reportDate" class="text-xs text-slate-500 mb-4 mono"></p>
+
+        <div class="space-y-2 text-sm mb-4">
+          <div class="flex justify-between"><span class="text-slate-600">Opening Cash</span><span class="font-semibold mono" id="reportOpening">₱0.00</span></div>
+          <div class="flex justify-between"><span class="text-slate-600">Total Sales</span><span class="font-semibold mono" id="reportSales">₱0.00</span></div>
+          <div class="flex justify-between"><span class="text-slate-600">GCash Payments</span><span class="font-semibold mono" id="reportGcash">₱0.00</span></div>
+          <div class="flex justify-between"><span class="text-slate-600">Total Expenses</span><span class="font-semibold mono text-red-600" id="reportExpenses">₱0.00</span></div>
+          <div class="flex justify-between border-t border-indigo-200 pt-2">
+            <span class="font-semibold text-slate-700">Expected Cash</span>
+            <span class="font-bold mono" id="reportExpected">₱0.00</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="font-semibold text-slate-700">Actual Cash</span>
+            <span class="font-bold mono" id="reportActual">₱0.00</span>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div id="statusBox" class="rounded-lg px-4 py-2 flex items-center justify-between status-balanced">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Status</span>
+          <span id="statusText" class="font-bold text-green-700">Balanced</span>
+          <span id="varianceText" class="text-sm font-semibold mono"></span>
+        </div>
+
+        <!-- Fund Breakdown -->
+        <div class="mt-5 pt-4 border-t-2 border-indigo-200">
+          <h3 class="font-bold text-slate-700 mb-3">Fund Breakdown</h3>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between items-center p-2.5 bg-green-50 rounded-lg border border-green-200">
+              <span class="text-slate-600">Closing Funds (₱1–₱200)</span>
+              <span class="font-bold mono text-green-700" id="closingFunds">₱0.00</span>
+            </div>
+            <div class="flex justify-between items-center p-2.5 bg-purple-50 rounded-lg border border-purple-200">
+              <span class="text-slate-600">Remittance (₱500+₱1000)</span>
+              <span class="font-bold mono text-purple-700" id="remittance">₱0.00</span>
+            </div>
+            <div id="additionalExpensesRow" class="flex justify-between items-center p-2.5 bg-amber-50 rounded-lg border border-amber-200 hidden">
+              <span class="text-slate-600">Additional Expenses</span>
+              <span class="font-bold mono text-amber-700" id="additionalExpensesTotal">-₱0.00</span>
+            </div>
+            <div class="flex justify-between items-center p-3 bg-indigo-100 rounded-lg border-2 border-indigo-300">
+              <span class="font-bold text-slate-800">Total Remittance</span>
+              <span class="font-bold mono text-indigo-800 text-lg" id="totalRemittance">₱0.00</span>
+            </div>
+          </div>
+        </div>
+      </div><!-- end snapshot -->
+
+      <!-- Action Buttons -->
+      <div class="space-y-2.5">
+        <button onclick="saveReportToFirebase()" class="btn btn-green w-full justify-center" id="saveBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <span id="saveBtnText">Save Report</span>
+        </button>
+        <button onclick="saveClosingFunds()" class="btn w-full justify-center" style="background:#0891b2;color:#fff;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+          Save Closing for Next Day
+        </button>
+        <button id="downloadBtn" onclick="downloadReportAsJpg()" class="btn btn-dark w-full justify-center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span id="downloadBtnText">Save as JPG</span>
+        </button>
+        <button id="sendBtn" onclick="sendToTelegram()" class="btn w-full justify-center" style="background:#0088cc;color:#fff;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <span id="sendBtnText">Send to Telegram</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  PAGE: HISTORY                                 -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="page-history" class="page max-w-5xl mx-auto px-4 py-6">
+  <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
+    <h1 class="text-2xl font-bold text-slate-800">📂 Sales History</h1>
+    <div class="flex gap-2 flex-wrap">
+      <select id="histStore" onchange="loadHistory()" class="field" style="width:auto;">
+        <option value="MAIN">MAIN Store</option>
+        <option value="BRANCH">BRANCH Store</option>
+      </select>
+      <input type="month" id="histMonth" onchange="loadHistory()" class="field" style="width:auto;">
+    </div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5" id="histSummaryCards"></div>
+
+  <!-- Table -->
+  <div class="card overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left border-b border-slate-200">
+          <th class="py-2 pr-4 font-semibold text-slate-500 uppercase text-xs">Date</th>
+          <th class="py-2 pr-4 font-semibold text-slate-500 uppercase text-xs">Sales</th>
+          <th class="py-2 pr-4 font-semibold text-slate-500 uppercase text-xs">Expected</th>
+          <th class="py-2 pr-4 font-semibold text-slate-500 uppercase text-xs">Actual</th>
+          <th class="py-2 pr-4 font-semibold text-slate-500 uppercase text-xs">Remittance</th>
+          <th class="py-2 font-semibold text-slate-500 uppercase text-xs">Status</th>
+        </tr>
+      </thead>
+      <tbody id="histTableBody">
+        <tr><td colspan="6" class="py-8 text-center text-slate-400">Select a store and month to load history.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  PAGE: ADMIN                                   -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="page-admin" class="page max-w-2xl mx-auto px-4 py-6">
+
+  <!-- Admin Lock Screen -->
+  <div id="adminLock" class="card max-w-sm mx-auto mt-10 text-center">
+    <div class="text-4xl mb-3">🔐</div>
+    <h2 class="text-xl font-bold text-slate-800 mb-1">Admin Access</h2>
+    <p class="text-slate-500 text-sm mb-5">Enter the admin password to continue.</p>
+    <input type="password" id="adminPwInput" placeholder="Password" class="field mb-3" onkeydown="if(event.key==='Enter')checkAdminPw()">
+    <button onclick="checkAdminPw()" class="btn btn-primary w-full justify-center">Unlock</button>
+    <p id="adminPwError" class="text-red-500 text-xs mt-2 hidden">Incorrect password.</p>
+  </div>
+
+  <!-- Admin Panel (hidden until unlocked) -->
+  <div id="adminPanel" class="hidden space-y-5">
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold text-slate-800">⚙️ Admin Settings</h1>
+      <button onclick="lockAdmin()" class="btn btn-ghost text-sm">🔒 Lock</button>
+    </div>
+
+    <!-- Firebase Config -->
+    <div class="card border-indigo-200">
+      <h3 class="font-bold text-slate-800 mb-1">🔥 Firebase Configuration</h3>
+      <p class="text-xs text-slate-500 mb-4">Paste your Firebase project config. Data is stored under your secret token path in Firebase, so only devices with the correct token can access it.</p>
+      <div class="space-y-3">
+        <div><label class="lbl">API Key</label><input type="text" id="cfg_apiKey" class="field" placeholder="AIzaSy…"></div>
+        <div><label class="lbl">Auth Domain</label><input type="text" id="cfg_authDomain" class="field" placeholder="your-app.firebaseapp.com"></div>
+        <div><label class="lbl">Database URL</label><input type="text" id="cfg_databaseURL" class="field" placeholder="https://your-app-default-rtdb.firebaseio.com"></div>
+        <div><label class="lbl">Project ID</label><input type="text" id="cfg_projectId" class="field" placeholder="your-app-id"></div>
+        <div><label class="lbl">Storage Bucket</label><input type="text" id="cfg_storageBucket" class="field" placeholder="your-app.appspot.com"></div>
+        <div><label class="lbl">Messaging Sender ID</label><input type="text" id="cfg_messagingSenderId" class="field" placeholder="123456789"></div>
+        <div><label class="lbl">App ID</label><input type="text" id="cfg_appId" class="field" placeholder="1:123456789:web:abc…"></div>
+        <div class="mt-2 pt-3 border-t border-slate-200">
+          <label class="lbl">🔑 Secret Access Token <span class="font-normal text-slate-400">(required — must match Firebase rules)</span></label>
+          <div class="flex gap-2">
+            <input type="text" id="cfg_accessToken" class="field font-mono" placeholder="e.g. sr_ramos_2024_secret">
+            <button onclick="generateToken()" class="btn btn-ghost text-sm whitespace-nowrap">🎲 Generate</button>
+          </div>
+          <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">⚠️ This token is the key to your database. Set it once, copy it to all authorized devices, and paste it into your Firebase rules (see instructions below). Changing it will lock out all devices until updated.</p>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-4">
+        <button onclick="saveFirebaseConfig()" class="btn btn-primary flex-1 justify-center">💾 Save & Connect</button>
+        <button onclick="testFirebase()" class="btn btn-ghost justify-center">🧪 Test</button>
+      </div>
+      <!-- Firebase Rules Instructions -->
+      <div class="mt-4 pt-4 border-t border-slate-200">
+        <p class="text-xs font-semibold text-slate-700 mb-2">📋 Firebase Realtime Database Rules</p>
+        <p class="text-xs text-slate-500 mb-2">Copy and paste these rules into your Firebase Console → Realtime Database → Rules. Replace <code class="bg-slate-100 px-1 rounded">YOUR_TOKEN_HERE</code> with your actual secret token above.</p>
+        <pre id="firebaseRulesBox" class="bg-slate-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto leading-relaxed">{
+  "rules": {
+    "YOUR_TOKEN_HERE": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}</pre>
+        <button onclick="copyFirebaseRules()" class="btn btn-ghost text-xs mt-2">📋 Copy Rules</button>
+        <p class="text-xs text-slate-400 mt-1">After saving the token above, the rules box will update automatically with your token filled in.</p>
+      </div>
+    </div>
+
+    <!-- Telegram Config -->
+    <div class="card border-blue-200">
+      <h3 class="font-bold text-slate-800 mb-1">✈️ Telegram Notifications</h3>
+      <p class="text-xs text-slate-500 mb-4">Get token from @BotFather, Chat ID from @userinfobot.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div><label class="lbl">Bot Token</label><input type="text" id="cfg_botToken" class="field" placeholder="1234567890:ABCdef…"></div>
+        <div><label class="lbl">Chat ID</label><input type="text" id="cfg_chatId" class="field" placeholder="-100123456789"></div>
+      </div>
+      <button onclick="saveTelegramConfig()" class="btn btn-cyan mt-3 w-full justify-center">💾 Save Telegram Settings</button>
+    </div>
+
+    <!-- Admin Password -->
+    <div class="card border-red-200">
+      <h3 class="font-bold text-slate-800 mb-1">🔑 Change Admin Password</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <div><label class="lbl">New Password</label><input type="password" id="newAdminPw1" class="field" placeholder="New password"></div>
+        <div><label class="lbl">Confirm Password</label><input type="password" id="newAdminPw2" class="field" placeholder="Repeat password"></div>
+      </div>
+      <button onclick="changeAdminPw()" class="btn btn-red mt-3 justify-center">🔑 Change Password</button>
+    </div>
+
+    <!-- User Management -->
+    <div class="card border-indigo-200">
+      <h3 class="font-bold text-slate-800 mb-1">👥 User Management</h3>
+      <p class="text-xs text-slate-500 mb-4">Add or remove users who can log in to the app. Passwords are stored locally (hashed).</p>
+      <div id="userListUI" class="space-y-2 mb-4"></div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <input type="text"     id="newUserUsername" class="field" placeholder="Username">
+        <input type="password" id="newUserPassword" class="field" placeholder="Password">
+        <button onclick="addUser()" class="btn btn-primary justify-center">➕ Add User</button>
+      </div>
+      <p id="userAddError" class="text-red-500 text-xs mt-2 hidden"></p>
+    </div>
+
+    <!-- Logo Customization -->
+    <div class="card border-violet-200">
+      <h3 class="font-bold text-slate-800 mb-1">🖼️ App Logo</h3>
+      <p class="text-xs text-slate-500 mb-4">Upload a custom logo to replace the default icon on the login screen and navbar. PNG or JPG recommended. Stored locally on this device.</p>
+      <div class="flex items-center gap-4 flex-wrap">
+        <!-- Preview -->
+        <div style="width:72px;height:72px;border-radius:14px;border:2px dashed #c4b5fd;background:#f5f3ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;">
+          <img id="logoPreview" src="" alt="" style="display:none;width:100%;height:100%;object-fit:contain;border-radius:12px;">
+          <svg id="logoPreviewPlaceholder" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="flex-1 min-w-0 space-y-2">
+          <label for="logoUploadInput" class="btn btn-primary text-sm cursor-pointer" style="display:inline-flex;">
+            📁 Choose Image
+          </label>
+          <input type="file" id="logoUploadInput" accept="image/*" style="display:none;" onchange="handleLogoUpload(event)">
+          <p class="text-xs text-slate-400" id="logoFileName">No file chosen</p>
+        </div>
+        <button onclick="removeLogo()" class="btn btn-ghost text-sm text-red-500 border-red-200 hover:bg-red-50">🗑️ Remove</button>
+      </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card border-red-200 bg-red-50">
+      <h3 class="font-bold text-red-700 mb-1">⚠️ Danger Zone</h3>
+      <p class="text-xs text-slate-500 mb-3">Delete all reports for a specific store from Firebase. This cannot be undone.</p>
+      <div class="flex gap-2 flex-wrap">
+        <button onclick="clearStoreData('MAIN')" class="btn btn-red text-sm">🗑️ Clear MAIN Data</button>
+        <button onclick="clearStoreData('BRANCH')" class="btn btn-red text-sm">🗑️ Clear BRANCH Data</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  MODAL: History Detail                         -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="histDetailModal" class="modal-overlay">
+  <div class="modal-box max-w-lg" style="max-height:90vh;overflow-y:auto;">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="font-bold text-slate-800 text-lg">Report Detail</h2>
+      <button onclick="closeHistDetail()" class="text-slate-400 hover:text-slate-700">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="histDetailContent"></div>
+    <div class="flex gap-2 mt-4">
+      <button onclick="loadReportIntoForm()" class="btn btn-primary flex-1 justify-center text-sm">✏️ Load into Form</button>
+      <button onclick="deleteReport()" class="btn btn-red justify-center text-sm">🗑️ Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  CONFIRM MODAL                                 -->
+<!-- ══════════════════════════════════════════════ -->
+<div id="confirmModal" class="modal-overlay">
+  <div class="modal-box max-w-sm text-center">
+    <div class="text-3xl mb-3" id="confirmIcon">⚠️</div>
+    <h3 class="font-bold text-slate-800 mb-2" id="confirmTitle">Are you sure?</h3>
+    <p class="text-slate-500 text-sm mb-5" id="confirmMsg"></p>
+    <div class="flex gap-3">
+      <button onclick="closeConfirm()" class="btn btn-ghost flex-1 justify-center">Cancel</button>
+      <button id="confirmOkBtn" class="btn btn-red flex-1 justify-center">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════ -->
+<!--  SCRIPTS                                       -->
+<!-- ══════════════════════════════════════════════ -->
+<script type="module">
+// ─────────────────────────────────────────────────
+//  Firebase SDK (modular v10)
+// ─────────────────────────────────────────────────
+import { initializeApp, getApps, deleteApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getDatabase, ref, set, get, remove, child } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
+
+// ─────────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────────
+let db = null;
+let expenses = [];
+let additionalExpenses = [];
+let selectedHistReport = null;   // { store, dateKey, data }
+let confirmCallback = null;
+
+const DEFAULT_ADMIN_PW = 'admin1234';
+const ADMIN_PW_KEY = 'sr_admin_pw';
+const FB_CONFIG_KEY = 'sr_fb_config';
+const FB_TOKEN_KEY  = 'sr_fb_token';
+const TG_CONFIG_KEY = 'sr_tg_config';
+
+// ─────────────────────────────────────────────────
+//  FIREBASE INIT
+// ─────────────────────────────────────────────────
+async function initFirebase(silent = false) {
+  const raw = localStorage.getItem(FB_CONFIG_KEY);
+  const token = localStorage.getItem(FB_TOKEN_KEY) || '';
+  const statusEl = document.getElementById('firebaseStatus');
+  if (!raw) {
+    statusEl.className = 'err';
+    statusEl.textContent = '⚠️ Not configured';
+    return false;
+  }
+  if (!token) {
+    statusEl.className = 'err';
+    statusEl.textContent = '⚠️ No access token';
+    if (!silent) toast('⚠️ Set a Secret Access Token in Admin → Firebase Config.');
+    return false;
+  }
+  try {
+    const cfg = JSON.parse(raw);
+    // Remove old app if exists
+    if (getApps().length) await deleteApp(getApps()[0]);
+    const app = initializeApp(cfg);
+    db = getDatabase(app);
+    // Test with token-gated path
+    await get(ref(db, `${token}/reports_main`));
+    statusEl.className = 'ok';
+    statusEl.textContent = '🟢 Firebase OK';
+    if (!silent) toast('✅ Firebase connected!');
+    return true;
+  } catch(e) {
+    db = null;
+    statusEl.className = 'err';
+    statusEl.textContent = '❌ Firebase error';
+    if (!silent) toast('❌ Firebase error: ' + e.message);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────────
+function storeDbPath(store) {
+  const token = localStorage.getItem(FB_TOKEN_KEY) || 'default';
+  const branch = store === 'MAIN' ? 'reports_main' : 'reports_branch';
+  return `${token}/${branch}`;
+}
+
+function toast(msg, dur = 2800) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+function peso(v) { return '₱' + Number(v || 0).toFixed(2); }
+
+function showConfirm(icon, title, msg, cb) {
+  document.getElementById('confirmIcon').textContent = icon;
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmMsg').textContent = msg;
+  confirmCallback = cb;
+  document.getElementById('confirmModal').classList.add('open');
+}
+window.closeConfirm = () => document.getElementById('confirmModal').classList.remove('open');
+document.getElementById('confirmOkBtn').onclick = () => {
+  closeConfirm();
+  if (confirmCallback) confirmCallback();
+};
+
+// ─────────────────────────────────────────────────
+//  NAVIGATION
+// ─────────────────────────────────────────────────
+window.showPage = function(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => {
+    if (t.textContent.toLowerCase().includes(id)) t.classList.add('active');
+  });
+  if (id === 'history') {
+    const now = new Date();
+    const m = document.getElementById('histMonth');
+    if (!m.value) m.value = now.toISOString().slice(0, 7);
+    loadHistory();
+  }
+  if (id === 'admin') {
+    loadAdminFields();
+    // Refresh logo preview
+    const saved = localStorage.getItem(LOGO_KEY);
+    applyLogo(saved || null);
+    const nameEl = document.getElementById('logoFileName');
+    if (nameEl) nameEl.textContent = saved ? 'Custom logo active' : 'No file chosen';
+  }
+};
+
+// ─────────────────────────────────────────────────
+//  STORE CHANGE
+// ─────────────────────────────────────────────────
+window.onStoreChange = function() {
+  const store = document.getElementById('storeSelect').value;
+  const isMain = store === 'MAIN';
+  document.getElementById('storeBadgeForm').textContent = store;
+  document.getElementById('storeBadgeForm').className = 'store-badge ' + (isMain ? 'badge-main' : 'badge-branch');
+  document.getElementById('reportStoreBadge').textContent = store;
+  document.getElementById('reportStoreBadge').className = 'store-badge ' + (isMain ? 'badge-main' : 'badge-branch');
+
+  // Load closing funds
+  const key = 'closing_' + store.toLowerCase();
+  const saved = localStorage.getItem(key);
+  const badge = document.getElementById('prevClosingBadge');
+  const note  = document.getElementById('prevClosingNote');
+  if (saved !== null) {
+    const amt = parseFloat(saved);
+    document.getElementById('openingCash').value = amt.toFixed(2);
+    badge.classList.remove('hidden');
+    note.textContent = `Opening cash loaded from ${store}'s last closing: ${peso(amt)}`;
+    note.classList.remove('hidden');
+  } else {
+    document.getElementById('openingCash').value = '';
+    badge.classList.add('hidden');
+    note.classList.add('hidden');
+  }
+  checkExistingReport();
+  calculateReport();
+};
+
+// ─────────────────────────────────────────────────
+//  EXPENSES
+// ─────────────────────────────────────────────────
+function trashIcon() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+}
+
+window.addExpense = function() {
+  const id = Date.now();
+  expenses.push(id);
+  const div = document.createElement('div');
+  div.id = `expense-${id}`;
+  div.className = 'flex gap-2 mb-2';
+  div.innerHTML = `
+    <input type="number" id="expAmount-${id}" placeholder="Amount" class="field w-1/3" oninput="calculateReport()">
+    <input type="text"   id="expDetails-${id}" placeholder="Details" class="field flex-1">
+    <button onclick="removeExpense(${id})" class="btn btn-red py-2 px-3">${trashIcon()}</button>
+  `;
+  document.getElementById('expensesList').appendChild(div);
+};
+
+window.removeExpense = function(id) {
+  expenses = expenses.filter(e => e !== id);
+  document.getElementById(`expense-${id}`).remove();
+  calculateReport();
+};
+
+window.addAdditionalExpense = function() {
+  const id = Date.now();
+  additionalExpenses.push(id);
+  const div = document.createElement('div');
+  div.id = `addExp-${id}`;
+  div.className = 'flex gap-2 mb-2';
+  div.innerHTML = `
+    <input type="number" id="addExpAmount-${id}" placeholder="Amount" class="field w-1/3" oninput="calculateReport()">
+    <input type="text"   id="addExpDetails-${id}" placeholder="Details" class="field flex-1">
+    <button onclick="removeAdditionalExpense(${id})" class="btn btn-red py-2 px-3">${trashIcon()}</button>
+  `;
+  document.getElementById('additionalExpensesList').appendChild(div);
+};
+
+window.removeAdditionalExpense = function(id) {
+  additionalExpenses = additionalExpenses.filter(e => e !== id);
+  document.getElementById(`addExp-${id}`).remove();
+  calculateReport();
+};
+
+// ─────────────────────────────────────────────────
+//  CALCULATE
+// ─────────────────────────────────────────────────
+window.calculateReport = function() {
+  const opening = parseFloat(document.getElementById('openingCash').value) || 0;
+  const sales   = parseFloat(document.getElementById('sales').value)       || 0;
+  const gcash   = parseFloat(document.getElementById('gcash').value)       || 0;
+
+  let totalExpenses = 0;
+  expenses.forEach(id => totalExpenses += parseFloat(document.getElementById(`expAmount-${id}`).value) || 0);
+
+  const b1000 = (parseFloat(document.getElementById('bill1000').value) || 0) * 1000;
+  const b500  = (parseFloat(document.getElementById('bill500').value)  || 0) * 500;
+  const b200  = (parseFloat(document.getElementById('bill200').value)  || 0) * 200;
+  const b100  = (parseFloat(document.getElementById('bill100').value)  || 0) * 100;
+  const b50   = (parseFloat(document.getElementById('bill50').value)   || 0) * 50;
+  const b20   = (parseFloat(document.getElementById('bill20').value)   || 0) * 20;
+  const c10   = (parseFloat(document.getElementById('coin10').value)   || 0) * 10;
+  const c5    = (parseFloat(document.getElementById('coin5').value)    || 0) * 5;
+  const c1    = (parseFloat(document.getElementById('coin1').value)    || 0) * 1;
+
+  const actualCash   = b1000 + b500 + b200 + b100 + b50 + b20 + c10 + c5 + c1;
+  const expectedCash = opening + sales - gcash - totalExpenses;
+  const variance     = actualCash - expectedCash;
+  const closingFunds = b200 + b100 + b50 + b20 + c10 + c5 + c1;
+  const remittance   = b500 + b1000;
+
+  let totalAddlExp = 0;
+  additionalExpenses.forEach(id => totalAddlExp += parseFloat(document.getElementById(`addExpAmount-${id}`).value) || 0);
+  const totalRemittance = remittance - totalAddlExp;
+
+  const date = document.getElementById('date').value;
+  document.getElementById('reportDate').textContent = date || '—';
+  document.getElementById('reportOpening').textContent  = peso(opening);
+  document.getElementById('reportSales').textContent    = peso(sales);
+  document.getElementById('reportGcash').textContent    = peso(gcash);
+  document.getElementById('reportExpenses').textContent = peso(totalExpenses);
+  document.getElementById('reportExpected').textContent = peso(expectedCash);
+  document.getElementById('reportActual').textContent   = peso(actualCash);
+  document.getElementById('closingFunds').textContent   = peso(closingFunds);
+  document.getElementById('remittance').textContent     = peso(remittance);
+  document.getElementById('totalRemittance').textContent= peso(totalRemittance);
+
+  const box = document.getElementById('statusBox');
+  const txt = document.getElementById('statusText');
+  const vt  = document.getElementById('varianceText');
+  if (variance === 0) {
+    box.className = 'rounded-lg px-4 py-2 flex items-center justify-between status-balanced';
+    txt.className = 'font-bold text-green-700'; txt.textContent = '✅ Balanced'; vt.textContent = '';
+  } else if (variance > 0) {
+    box.className = 'rounded-lg px-4 py-2 flex items-center justify-between status-excess';
+    txt.className = 'font-bold text-blue-700'; txt.textContent = '📈 Excess';
+    vt.innerHTML = `<span class="text-blue-700 mono text-sm">+${peso(variance)}</span>`;
+  } else {
+    box.className = 'rounded-lg px-4 py-2 flex items-center justify-between status-lapse';
+    txt.className = 'font-bold text-red-700'; txt.textContent = '⚠️ Lapse';
+    vt.innerHTML = `<span class="text-red-700 mono text-sm">${peso(variance)}</span>`;
+  }
+
+  if (totalAddlExp > 0) {
+    document.getElementById('additionalExpensesRow').classList.remove('hidden');
+    document.getElementById('additionalExpensesTotal').textContent = '-' + peso(totalAddlExp);
+  } else {
+    document.getElementById('additionalExpensesRow').classList.add('hidden');
+  }
+};
+
+// ─────────────────────────────────────────────────
+//  BUILD REPORT OBJECT
+// ─────────────────────────────────────────────────
+function buildReportObject() {
+  const opening = parseFloat(document.getElementById('openingCash').value) || 0;
+  const sales   = parseFloat(document.getElementById('sales').value)       || 0;
+  const gcash   = parseFloat(document.getElementById('gcash').value)       || 0;
+
+  const expArr = expenses.map(id => ({
+    amount:  parseFloat(document.getElementById(`expAmount-${id}`).value) || 0,
+    details: document.getElementById(`expDetails-${id}`).value.trim()
+  }));
+
+  const addlExpArr = additionalExpenses.map(id => ({
+    amount:  parseFloat(document.getElementById(`addExpAmount-${id}`).value) || 0,
+    details: document.getElementById(`addExpDetails-${id}`).value.trim()
+  }));
+
+  const bills = {
+    b1000: parseFloat(document.getElementById('bill1000').value) || 0,
+    b500:  parseFloat(document.getElementById('bill500').value)  || 0,
+    b200:  parseFloat(document.getElementById('bill200').value)  || 0,
+    b100:  parseFloat(document.getElementById('bill100').value)  || 0,
+    b50:   parseFloat(document.getElementById('bill50').value)   || 0,
+    b20:   parseFloat(document.getElementById('bill20').value)   || 0,
+    c10:   parseFloat(document.getElementById('coin10').value)   || 0,
+    c5:    parseFloat(document.getElementById('coin5').value)    || 0,
+    c1:    parseFloat(document.getElementById('coin1').value)    || 0,
+  };
+
+  const totalExpenses   = expArr.reduce((s, e) => s + e.amount, 0);
+  const actualCash      = bills.b1000*1000 + bills.b500*500 + bills.b200*200 + bills.b100*100 + bills.b50*50 + bills.b20*20 + bills.c10*10 + bills.c5*5 + bills.c1;
+  const expectedCash    = opening + sales - gcash - totalExpenses;
+  const variance        = actualCash - expectedCash;
+  const closingFunds    = bills.b200*200 + bills.b100*100 + bills.b50*50 + bills.b20*20 + bills.c10*10 + bills.c5*5 + bills.c1;
+  const remittance      = bills.b500*500 + bills.b1000*1000;
+  const totalAddlExp    = addlExpArr.reduce((s, e) => s + e.amount, 0);
+  const totalRemittance = remittance - totalAddlExp;
+  const status          = variance === 0 ? 'Balanced' : variance > 0 ? 'Excess' : 'Lapse';
+
+  return {
+    store:            document.getElementById('storeSelect').value,
+    date:             document.getElementById('date').value,
+    openingCash:      opening,
+    sales,
+    gcash,
+    expenses:         expArr,
+    bills,
+    additionalExpenses: addlExpArr,
+    notes:            document.getElementById('notes').value.trim(),
+    totalExpenses,
+    expectedCash,
+    actualCash,
+    variance,
+    closingFunds,
+    remittance,
+    totalAdditionalExpenses: totalAddlExp,
+    totalRemittance,
+    status,
+    savedAt: new Date().toISOString()
+  };
+}
+
+// ─────────────────────────────────────────────────
+//  CHECK EXISTING REPORT
+// ─────────────────────────────────────────────────
+window.checkExistingReport = async function() {
+  const note = document.getElementById('existingReportNote');
+  note.classList.add('hidden');
+  if (!db) return;
+  const date  = document.getElementById('date').value;
+  const store = document.getElementById('storeSelect').value;
+  if (!date) return;
+  try {
+    const snap = await get(ref(db, `${storeDbPath(store)}/${date}`));
+    if (snap.exists()) note.classList.remove('hidden');
+  } catch(_) {}
+};
+
+// ─────────────────────────────────────────────────
+//  SAVE TO FIREBASE
+// ─────────────────────────────────────────────────
+window.saveReportToFirebase = async function() {
+  const date = document.getElementById('date').value;
+  if (!date) { toast('⚠️ Please select a date first.'); return; }
+  if (!db)   { toast('⚠️ Firebase not connected. Configure it in Admin.'); return; }
+
+  const btn = document.getElementById('saveBtn');
+  const lbl = document.getElementById('saveBtnText');
+  btn.disabled = true;
+  lbl.innerHTML = '<div class="spin"></div> Saving…';
+
+  try {
+    const report = buildReportObject();
+    const path   = `${storeDbPath(report.store)}/${date}`;
+    await set(ref(db, path), report);
+    toast('✅ Report saved to Firebase!');
+    document.getElementById('existingReportNote').classList.remove('hidden');
+  } catch(e) {
+    toast('❌ Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    lbl.textContent = 'Save Report';
+  }
+};
+
+// ─────────────────────────────────────────────────
+//  CLOSING FUNDS
+// ─────────────────────────────────────────────────
+window.saveClosingFunds = function() {
+  const store = document.getElementById('storeSelect').value;
+  // Read directly from the bill/coin inputs, same logic as calculateReport
+  const b200 = (parseFloat(document.getElementById('bill200').value) || 0) * 200;
+  const b100 = (parseFloat(document.getElementById('bill100').value) || 0) * 100;
+  const b50  = (parseFloat(document.getElementById('bill50').value)  || 0) * 50;
+  const b20  = (parseFloat(document.getElementById('bill20').value)  || 0) * 20;
+  const c10  = (parseFloat(document.getElementById('coin10').value)  || 0) * 10;
+  const c5   = (parseFloat(document.getElementById('coin5').value)   || 0) * 5;
+  const c1   = (parseFloat(document.getElementById('coin1').value)   || 0) * 1;
+  const closing = b200 + b100 + b50 + b20 + c10 + c5 + c1;
+  const key = 'closing_' + store.toLowerCase();
+  localStorage.setItem(key, closing.toFixed(2));
+  toast(`✅ Closing funds (${peso(closing)}) saved for ${store}.`);
+};
+
+// ─────────────────────────────────────────────────
+//  JPG / TELEGRAM
+// ─────────────────────────────────────────────────
+async function captureReportAsJpg() {
+  const target = document.getElementById('reportSnapshot');
+  const canvas = await html2canvas(target, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+}
+
+window.downloadReportAsJpg = async function(autoFilename = null) {
+  const btn = document.getElementById('downloadBtn');
+  const lbl = document.getElementById('downloadBtnText');
+  btn.disabled = true;
+  lbl.innerHTML = '<div class="spin"></div>';
+  try {
+    const store   = document.getElementById('storeSelect').value;
+    const date    = document.getElementById('date').value || 'report';
+    const suggest = autoFilename || `sales_report_${store}_${date}`.replace(/\s+/g, '_');
+    const input   = prompt('Enter a filename (without extension):', suggest);
+    if (input === null) return;
+    const filename = (input.trim() || suggest) + '.jpg';
+    const blob = await captureReportAsJpg();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    toast('❌ Failed to save image: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    lbl.textContent = 'Save as JPG';
+  }
+};
+
+window.sendToTelegram = async function() {
+  const tgRaw = localStorage.getItem(TG_CONFIG_KEY);
+  const tg    = tgRaw ? JSON.parse(tgRaw) : {};
+  const botToken = tg.botToken || '';
+  const chatId   = tg.chatId   || '';
+  if (!botToken || !chatId) {
+    toast('⚠️ Configure Telegram in Admin first.');
+    return;
+  }
+
+  const btn = document.getElementById('sendBtn');
+  const lbl = document.getElementById('sendBtnText');
+  btn.disabled = true;
+  lbl.innerHTML = '<div class="spin"></div> Sending…';
+
+  try {
+    const r = buildReportObject();
+    const expLines = r.expenses.filter(e => e.amount > 0).map(e => `  • ${e.details || 'Expense'}: ${peso(e.amount)}`).join('\n') || '  None';
+    const addlLines = r.additionalExpenses.filter(e => e.amount > 0).map(e => `  • ${e.details || 'Expense'}: ${peso(e.amount)}`).join('\n') || '  None';
+
+    const msg = `📊 DAILY SALES REPORT
+🏪 Store: ${r.store}
+📅 Date: ${r.date}
+
+💰 SALES SUMMARY
+Opening Cash:   ${peso(r.openingCash)}
+Total Sales:    ${peso(r.sales)}
+GCash Payments: ${peso(r.gcash)}
+Total Expenses: ${peso(r.totalExpenses)}
+${r.expenses.length ? '\nExpenses:\n' + expLines : ''}
+Expected Cash:  ${peso(r.expectedCash)}
+Actual Cash:    ${peso(r.actualCash)}
+
+📈 STATUS: ${r.status}${r.variance !== 0 ? '\nVariance: ' + (r.variance > 0 ? '+' : '') + peso(r.variance) : ''}
+
+💵 FUND BREAKDOWN
+Closing Funds (₱1–₱200): ${peso(r.closingFunds)}
+Remittance (₱500+₱1000): ${peso(r.remittance)}${r.totalAdditionalExpenses > 0 ? '\nAdditional Expenses: -' + peso(r.totalAdditionalExpenses) + '\nAdd\'l Expense Details:\n' + addlLines : ''}
+Total Remittance: ${peso(r.totalRemittance)}${r.notes ? '\n\n📝 Notes: ' + r.notes : ''}`;
+
+    const res  = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: msg })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      toast('✅ Sent to Telegram!');
+      await downloadReportAsJpg(`sales_report_${r.store}_${r.date}`.replace(/\s+/g, '_'));
+    } else {
+      toast('❌ Telegram error: ' + (data.description || 'Unknown'));
+    }
+  } catch(e) {
+    toast('❌ Failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    lbl.textContent = 'Send to Telegram';
+  }
+};
+
+// ─────────────────────────────────────────────────
+//  HISTORY
+// ─────────────────────────────────────────────────
+window.loadHistory = async function() {
+  const store = document.getElementById('histStore').value;
+  const month = document.getElementById('histMonth').value; // YYYY-MM
+  const tbody = document.getElementById('histTableBody');
+  const cards = document.getElementById('histSummaryCards');
+  tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">Loading…</td></tr>`;
+  cards.innerHTML = '';
+
+  if (!db) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-red-400">Firebase not connected. Configure in Admin.</td></tr>`;
+    return;
+  }
+  if (!month) return;
+
+  try {
+    const snap = await get(ref(db, storeDbPath(store)));
+    if (!snap.exists()) {
+      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No reports found for ${store}.</td></tr>`;
+      return;
+    }
+
+    const all = snap.val();
+    // Filter by month
+    const rows = Object.entries(all)
+      .filter(([k]) => k.startsWith(month))
+      .sort(([a], [b]) => b.localeCompare(a));
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No reports for ${month}.</td></tr>`;
+      cards.innerHTML = '';
+      return;
+    }
+
+    // Summary
+    let totSales = 0, totRemit = 0, totExp = 0, balanced = 0;
+    rows.forEach(([, d]) => {
+      totSales += d.sales || 0;
+      totRemit += d.totalRemittance || 0;
+      totExp   += d.totalExpenses   || 0;
+      if (d.status === 'Balanced') balanced++;
+    });
+
+    cards.innerHTML = `
+      <div class="card text-center"><p class="text-xs text-slate-500 mb-1">Total Sales</p><p class="font-bold text-lg text-indigo-700 mono">${peso(totSales)}</p></div>
+      <div class="card text-center"><p class="text-xs text-slate-500 mb-1">Total Remittance</p><p class="font-bold text-lg text-purple-700 mono">${peso(totRemit)}</p></div>
+      <div class="card text-center"><p class="text-xs text-slate-500 mb-1">Total Expenses</p><p class="font-bold text-lg text-red-600 mono">${peso(totExp)}</p></div>
+      <div class="card text-center"><p class="text-xs text-slate-500 mb-1">Days Balanced</p><p class="font-bold text-lg text-green-700">${balanced} / ${rows.length}</p></div>
+    `;
+
+    tbody.innerHTML = rows.map(([dateKey, d]) => {
+      const statusColor = d.status === 'Balanced' ? 'text-green-600' : d.status === 'Excess' ? 'text-blue-600' : 'text-red-600';
+      const statusEmoji = d.status === 'Balanced' ? '✅' : d.status === 'Excess' ? '📈' : '⚠️';
+      return `
+        <tr class="hist-row border-b border-slate-100" onclick="openHistDetail('${store}','${dateKey}')">
+          <td class="py-3 pr-4 font-semibold text-slate-700 mono text-sm">${dateKey}</td>
+          <td class="py-3 pr-4 mono text-sm">${peso(d.sales)}</td>
+          <td class="py-3 pr-4 mono text-sm">${peso(d.expectedCash)}</td>
+          <td class="py-3 pr-4 mono text-sm">${peso(d.actualCash)}</td>
+          <td class="py-3 pr-4 mono text-sm font-semibold text-indigo-700">${peso(d.totalRemittance)}</td>
+          <td class="py-3 font-semibold ${statusColor} text-sm">${statusEmoji} ${d.status}${d.variance !== 0 ? ' <span class="font-normal text-xs">('+peso(d.variance)+')</span>' : ''}</td>
+        </tr>`;
+    }).join('');
+
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-red-400">Error: ${e.message}</td></tr>`;
+  }
+};
+
+window.openHistDetail = async function(store, dateKey) {
+  if (!db) return;
+  try {
+    const snap = await get(ref(db, `${storeDbPath(store)}/${dateKey}`));
+    if (!snap.exists()) { toast('Report not found.'); return; }
+    const d = snap.val();
+    selectedHistReport = { store, dateKey, data: d };
+
+    const expRows = (d.expenses||[]).filter(e=>e.amount>0).map(e=>`<tr><td class="py-1 pr-4 text-slate-600">${e.details||'—'}</td><td class="py-1 mono">${peso(e.amount)}</td></tr>`).join('');
+    const addlRows = (d.additionalExpenses||[]).filter(e=>e.amount>0).map(e=>`<tr><td class="py-1 pr-4 text-slate-600">${e.details||'—'}</td><td class="py-1 mono">${peso(e.amount)}</td></tr>`).join('');
+    const bills = d.bills || {};
+
+    document.getElementById('histDetailContent').innerHTML = `
+      <div class="space-y-4 text-sm">
+        <div class="flex gap-2 items-center">
+          <span class="store-badge ${store==='MAIN'?'badge-main':'badge-branch'}">${store}</span>
+          <span class="mono font-semibold">${dateKey}</span>
+          <span class="ml-auto text-xs text-slate-400">Saved: ${d.savedAt ? new Date(d.savedAt).toLocaleString() : '—'}</span>
+        </div>
+        <table class="w-full">
+          <tr><td class="py-1 text-slate-500">Opening Cash</td><td class="py-1 mono font-semibold">${peso(d.openingCash)}</td></tr>
+          <tr><td class="py-1 text-slate-500">Total Sales</td><td class="py-1 mono font-semibold">${peso(d.sales)}</td></tr>
+          <tr><td class="py-1 text-slate-500">GCash Payments</td><td class="py-1 mono font-semibold">${peso(d.gcash)}</td></tr>
+          <tr><td class="py-1 text-slate-500">Total Expenses</td><td class="py-1 mono font-semibold text-red-600">${peso(d.totalExpenses)}</td></tr>
+          <tr class="border-t"><td class="py-1 font-semibold text-slate-700">Expected Cash</td><td class="py-1 mono font-bold">${peso(d.expectedCash)}</td></tr>
+          <tr><td class="py-1 font-semibold text-slate-700">Actual Cash</td><td class="py-1 mono font-bold">${peso(d.actualCash)}</td></tr>
+          <tr><td class="py-1 font-semibold text-slate-700">Status</td><td class="py-1 font-bold ${d.status==='Balanced'?'text-green-600':d.status==='Excess'?'text-blue-600':'text-red-600'}">${d.status}${d.variance!==0?' ('+peso(d.variance)+')':''}</td></tr>
+        </table>
+        ${expRows ? `<div><p class="font-semibold text-slate-700 mb-1">Expenses:</p><table class="w-full">${expRows}</table></div>` : ''}
+        <table class="w-full border-t pt-2">
+          <tr><td class="py-1 text-slate-500">Closing Funds</td><td class="py-1 mono font-semibold text-green-700">${peso(d.closingFunds)}</td></tr>
+          <tr><td class="py-1 text-slate-500">Remittance</td><td class="py-1 mono font-semibold text-purple-700">${peso(d.remittance)}</td></tr>
+          ${addlRows ? `<tr><td class="py-1 text-slate-500">Addl. Expenses</td><td class="py-1 mono font-semibold text-amber-700">-${peso(d.totalAdditionalExpenses)}</td></tr>` : ''}
+          <tr class="border-t"><td class="py-1 font-bold text-slate-800">Total Remittance</td><td class="py-1 mono font-bold text-indigo-800 text-base">${peso(d.totalRemittance)}</td></tr>
+        </table>
+        ${addlRows ? `<div><p class="font-semibold text-slate-700 mb-1">Additional Expenses:</p><table class="w-full">${addlRows}</table></div>` : ''}
+        <div class="p-3 bg-slate-50 rounded-lg border">
+          <p class="font-semibold text-slate-700 mb-2">Cash Count (Bills):</p>
+          <div class="grid grid-cols-3 gap-1 text-xs mono">
+            ${[['₱1000',bills.b1000],['₱500',bills.b500],['₱200',bills.b200],['₱100',bills.b100],['₱50',bills.b50],['₱20',bills.b20],['₱10c',bills.c10],['₱5c',bills.c5],['₱1c',bills.c1]].map(([l,v])=>`<div class="flex justify-between gap-1 bg-white rounded px-2 py-1 border"><span class="text-slate-500">${l}</span><span class="font-semibold">${v||0}</span></div>`).join('')}
+          </div>
+        </div>
+        ${d.notes ? `<div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200"><p class="text-xs font-semibold text-yellow-800 mb-1">Notes:</p><p class="text-sm text-slate-700">${d.notes}</p></div>` : ''}
+      </div>
+    `;
+    document.getElementById('histDetailModal').classList.add('open');
+  } catch(e) {
+    toast('Error: ' + e.message);
+  }
+};
+
+window.closeHistDetail = () => document.getElementById('histDetailModal').classList.remove('open');
+
+window.deleteReport = function() {
+  if (!selectedHistReport) return;
+  const { store, dateKey } = selectedHistReport;
+  showConfirm('🗑️', 'Delete Report', `Delete report for ${store} on ${dateKey}? This cannot be undone.`, async () => {
+    try {
+      await remove(ref(db, `${storeDbPath(store)}/${dateKey}`));
+      toast('🗑️ Report deleted.');
+      closeHistDetail();
+      loadHistory();
+    } catch(e) { toast('❌ ' + e.message); }
+  });
+};
+
+window.loadReportIntoForm = function() {
+  if (!selectedHistReport) return;
+  const d = selectedHistReport.data;
+  closeHistDetail();
+  showPage('report');
+
+  document.getElementById('storeSelect').value = d.store;
+  onStoreChange();
+  document.getElementById('date').value = d.date;
+  document.getElementById('openingCash').value = d.openingCash || '';
+  document.getElementById('sales').value = d.sales || '';
+  document.getElementById('gcash').value = d.gcash || '';
+  document.getElementById('notes').value = d.notes || '';
+
+  // Bills
+  const b = d.bills || {};
+  ['1000','500','200','100','50','20'].forEach(k => document.getElementById('bill'+k).value = b['b'+k] || '');
+  ['10','5','1'].forEach(k => document.getElementById('coin'+k).value = b['c'+k] || '');
+
+  // Expenses
+  document.getElementById('expensesList').innerHTML = '';
+  expenses = [];
+  (d.expenses || []).forEach(e => {
+    addExpense();
+    const id = expenses[expenses.length - 1];
+    document.getElementById(`expAmount-${id}`).value = e.amount || '';
+    document.getElementById(`expDetails-${id}`).value = e.details || '';
+  });
+
+  // Additional expenses
+  document.getElementById('additionalExpensesList').innerHTML = '';
+  additionalExpenses = [];
+  (d.additionalExpenses || []).forEach(e => {
+    addAdditionalExpense();
+    const id = additionalExpenses[additionalExpenses.length - 1];
+    document.getElementById(`addExpAmount-${id}`).value = e.amount || '';
+    document.getElementById(`addExpDetails-${id}`).value = e.details || '';
+  });
+
+  calculateReport();
+  toast('✅ Report loaded into form.');
+};
+
+// ─────────────────────────────────────────────────
+//  ADMIN
+// ─────────────────────────────────────────────────
+const getAdminPw = () => localStorage.getItem(ADMIN_PW_KEY) || DEFAULT_ADMIN_PW;
+
+window.checkAdminPw = function() {
+  const input = document.getElementById('adminPwInput').value;
+  if (input === getAdminPw()) {
+    document.getElementById('adminLock').classList.add('hidden');
+    document.getElementById('adminPanel').classList.remove('hidden');
+    document.getElementById('adminPwInput').value = '';
+  } else {
+    document.getElementById('adminPwError').classList.remove('hidden');
+  }
+};
+
+window.lockAdmin = function() {
+  document.getElementById('adminLock').classList.remove('hidden');
+  document.getElementById('adminPanel').classList.add('hidden');
+};
+
+window.changeAdminPw = function() {
+  const p1 = document.getElementById('newAdminPw1').value;
+  const p2 = document.getElementById('newAdminPw2').value;
+  if (!p1) { toast('⚠️ Enter a new password.'); return; }
+  if (p1 !== p2) { toast('⚠️ Passwords do not match.'); return; }
+  localStorage.setItem(ADMIN_PW_KEY, p1);
+  document.getElementById('newAdminPw1').value = '';
+  document.getElementById('newAdminPw2').value = '';
+  toast('✅ Password changed.');
+};
+
+function loadAdminFields() {
+  const raw = localStorage.getItem(FB_CONFIG_KEY);
+  if (raw) {
+    try {
+      const cfg = JSON.parse(raw);
+      Object.keys(cfg).forEach(k => {
+        const el = document.getElementById('cfg_' + k);
+        if (el) el.value = cfg[k] || '';
+      });
+    } catch(_) {}
+  }
+  const savedToken = localStorage.getItem(FB_TOKEN_KEY) || '';
+  const tokenEl = document.getElementById('cfg_accessToken');
+  if (tokenEl) tokenEl.value = savedToken;
+  updateFirebaseRulesBox(savedToken);
+
+  const tgRaw = localStorage.getItem(TG_CONFIG_KEY);
+  if (tgRaw) {
+    try {
+      const tg = JSON.parse(tgRaw);
+      document.getElementById('cfg_botToken').value = tg.botToken || '';
+      document.getElementById('cfg_chatId').value   = tg.chatId   || '';
+    } catch(_) {}
+  }
+  renderUserList();
+}
+
+function updateFirebaseRulesBox(token) {
+  const box = document.getElementById('firebaseRulesBox');
+  if (!box) return;
+  const t = token || 'YOUR_TOKEN_HERE';
+  box.textContent = `{
+  "rules": {
+    "${t}": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}`;
+}
+
+window.generateToken = function() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map(b => chars[b % chars.length]).join('');
+  const token = 'sr_' + rand;
+  document.getElementById('cfg_accessToken').value = token;
+  updateFirebaseRulesBox(token);
+  toast('🎲 Token generated — save config to apply.');
+};
+
+window.copyFirebaseRules = function() {
+  const box = document.getElementById('firebaseRulesBox');
+  if (!box) return;
+  navigator.clipboard.writeText(box.textContent).then(() => toast('📋 Rules copied to clipboard!'));
+};
+
+// ─────────────────────────────────────────────────
+//  LOGO MANAGEMENT
+// ─────────────────────────────────────────────────
+const LOGO_KEY = 'sr_custom_logo';
+
+function applyLogo(dataUrl) {
+  // Login logo
+  const loginImg = document.getElementById('loginLogoImg');
+  const loginSvg = document.getElementById('loginLogoSvg');
+  const loginWrap = document.getElementById('loginLogoWrap');
+  if (dataUrl) {
+    loginImg.src = dataUrl;
+    loginImg.style.display = 'block';
+    loginSvg.style.display = 'none';
+    loginWrap.style.background = 'transparent';
+    loginWrap.style.border = 'none';
+    loginWrap.style.padding = '0';
+  } else {
+    loginImg.style.display = 'none';
+    loginSvg.style.display = 'block';
+    loginWrap.style.background = 'rgba(129,140,248,.2)';
+    loginWrap.style.border = '1px solid rgba(129,140,248,.4)';
+    loginWrap.style.padding = '10px';
+  }
+  // Nav logo
+  const navImg = document.getElementById('navLogoImg');
+  const navSvg = document.getElementById('navLogoSvg');
+  if (dataUrl) {
+    navImg.src = dataUrl;
+    navImg.style.display = 'block';
+    navSvg.style.display = 'none';
+  } else {
+    navImg.style.display = 'none';
+    navSvg.style.display = 'block';
+  }
+  // Admin preview
+  const preview = document.getElementById('logoPreview');
+  const placeholder = document.getElementById('logoPreviewPlaceholder');
+  if (preview && placeholder) {
+    if (dataUrl) {
+      preview.src = dataUrl;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+    } else {
+      preview.style.display = 'none';
+      placeholder.style.display = 'block';
+    }
+  }
+}
+
+window.handleLogoUpload = function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (file.size > 1024 * 1024) { toast('⚠️ Image must be under 1MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const dataUrl = e.target.result;
+    localStorage.setItem(LOGO_KEY, dataUrl);
+    applyLogo(dataUrl);
+    const nameEl = document.getElementById('logoFileName');
+    if (nameEl) nameEl.textContent = file.name;
+    toast('✅ Logo updated!');
+  };
+  reader.readAsDataURL(file);
+};
+
+window.removeLogo = function() {
+  localStorage.removeItem(LOGO_KEY);
+  applyLogo(null);
+  const nameEl = document.getElementById('logoFileName');
+  if (nameEl) nameEl.textContent = 'No file chosen';
+  const input = document.getElementById('logoUploadInput');
+  if (input) input.value = '';
+  toast('🗑️ Logo removed.');
+};
+
+window.saveFirebaseConfig = async function() {
+  const cfg = {
+    apiKey:            document.getElementById('cfg_apiKey').value.trim(),
+    authDomain:        document.getElementById('cfg_authDomain').value.trim(),
+    databaseURL:       document.getElementById('cfg_databaseURL').value.trim(),
+    projectId:         document.getElementById('cfg_projectId').value.trim(),
+    storageBucket:     document.getElementById('cfg_storageBucket').value.trim(),
+    messagingSenderId: document.getElementById('cfg_messagingSenderId').value.trim(),
+    appId:             document.getElementById('cfg_appId').value.trim(),
+  };
+  const token = document.getElementById('cfg_accessToken').value.trim();
+  if (!cfg.apiKey || !cfg.databaseURL) { toast('⚠️ API Key and Database URL are required.'); return; }
+  if (!token) { toast('⚠️ A Secret Access Token is required.'); return; }
+  localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg));
+  localStorage.setItem(FB_TOKEN_KEY, token);
+  updateFirebaseRulesBox(token);
+  await initFirebase(false);
+};
+
+window.testFirebase = async function() {
+  if (!db) { toast('⚠️ Firebase not connected yet. Save config first.'); return; }
+  const token = localStorage.getItem(FB_TOKEN_KEY) || '';
+  if (!token) { toast('⚠️ No access token set.'); return; }
+  try {
+    await get(ref(db, `${token}/reports_main`));
+    toast('✅ Firebase connection test OK!');
+  } catch(e) {
+    toast('❌ Test failed: ' + e.message);
+  }
+};
+
+window.saveTelegramConfig = function() {
+  const tg = {
+    botToken: document.getElementById('cfg_botToken').value.trim(),
+    chatId:   document.getElementById('cfg_chatId').value.trim(),
+  };
+  localStorage.setItem(TG_CONFIG_KEY, JSON.stringify(tg));
+  toast('✅ Telegram settings saved.');
+};
+
+window.clearStoreData = function(store) {
+  if (!db) { toast('⚠️ Firebase not connected.'); return; }
+  showConfirm('🗑️', `Clear ALL ${store} Data`, `This will permanently delete every report for ${store} from Firebase. Cannot be undone.`, async () => {
+    try {
+      await remove(ref(db, storeDbPath(store)));
+      toast(`🗑️ All ${store} reports deleted.`);
+    } catch(e) { toast('❌ ' + e.message); }
+  });
+};
+
+// ─────────────────────────────────────────────────
+//  LOGIN SYSTEM
+// ─────────────────────────────────────────────────
+const USERS_KEY   = 'sr_users';
+const SESSION_KEY = 'sr_session'; // sessionStorage — clears on tab close
+
+// Simple hash (not cryptographic, but fine for this local-auth use case)
+async function hashPw(pw) {
+  const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw + '::sr_salt_2024'));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+function getUsers() {
+  return JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+}
+
+function saveUsers(arr) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(arr));
+}
+
+// Seed a default user if none exist
+async function ensureDefaultUser() {
+  if (getUsers().length === 0) {
+    const hash = await hashPw('admin1234');
+    saveUsers([{ username: 'admin', pwHash: hash, role: 'admin' }]);
+  }
+}
+
+window.doLogin = async function() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  const btn      = document.getElementById('loginBtn');
+  const lbl      = document.getElementById('loginBtnText');
+
+  errEl.classList.add('hidden');
+  if (!username || !password) { errEl.textContent = 'Please enter your username and password.'; errEl.classList.remove('hidden'); return; }
+
+  btn.disabled = true;
+  lbl.innerHTML = '<div class="spin" style="border-top-color:#fff;"></div>';
+
+  await new Promise(r => setTimeout(r, 400)); // brief delay feels authentic
+
+  const hash  = await hashPw(password);
+  const users = getUsers();
+  const match = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.pwHash === hash);
+
+  if (match) {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ username: match.username, role: match.role, loginAt: Date.now() }));
+    showAppForUser(match.username);
+  } else {
+    errEl.textContent = '❌ Incorrect username or password.';
+    errEl.classList.remove('hidden');
+    document.getElementById('loginPassword').value = '';
+    btn.disabled = false;
+    lbl.textContent = 'Sign In';
+  }
+};
+
+function showAppForUser(username) {
+  const gate = document.getElementById('loginGate');
+  gate.classList.add('hidden');
+  setTimeout(() => gate.style.display = 'none', 380);
+  document.getElementById('appWrapper').classList.add('visible');
+  document.getElementById('loggedInUser').textContent = '👤 ' + username + '  ×';
+}
+
+window.doLogout = function() {
+  showConfirm('🔒', 'Sign Out', 'Are you sure you want to sign out?', () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    location.reload();
+  });
+};
+
+window.toggleLoginPw = function() {
+  const f = document.getElementById('loginPassword');
+  f.type = f.type === 'password' ? 'text' : 'password';
+};
+
+// ── User Management (Admin) ──
+window.renderUserList = function() {
+  const users = getUsers();
+  const container = document.getElementById('userListUI');
+  if (!container) return;
+  container.innerHTML = users.length === 0
+    ? '<p class="text-sm text-slate-400">No users yet.</p>'
+    : users.map((u, i) => `
+        <div class="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg border">
+          <div class="flex items-center gap-2">
+            <span class="font-semibold text-slate-800 text-sm">${u.username}</span>
+            ${u.role === 'admin' ? '<span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">admin</span>' : ''}
+          </div>
+          <button onclick="removeUser(${i})" class="btn btn-red py-1 px-2 text-xs" ${users.length === 1 ? 'disabled title="Cannot remove the only user"' : ''}>Remove</button>
+        </div>`).join('');
+};
+
+window.addUser = async function() {
+  const uInput = document.getElementById('newUserUsername');
+  const pInput = document.getElementById('newUserPassword');
+  const errEl  = document.getElementById('userAddError');
+  const username = uInput.value.trim();
+  const password = pInput.value;
+  errEl.classList.add('hidden');
+
+  if (!username) { errEl.textContent = 'Username is required.'; errEl.classList.remove('hidden'); return; }
+  if (!password || password.length < 4) { errEl.textContent = 'Password must be at least 4 characters.'; errEl.classList.remove('hidden'); return; }
+
+  const users = getUsers();
+  if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) {
+    errEl.textContent = 'That username already exists.'; errEl.classList.remove('hidden'); return;
+  }
+
+  const hash = await hashPw(password);
+  users.push({ username, pwHash: hash, role: 'staff' });
+  saveUsers(users);
+  uInput.value = '';
+  pInput.value = '';
+  renderUserList();
+  toast(`✅ User "${username}" added.`);
+};
+
+window.removeUser = function(i) {
+  const users = getUsers();
+  if (users.length <= 1) { toast('⚠️ Cannot remove the only user.'); return; }
+  const name = users[i].username;
+  showConfirm('🗑️', 'Remove User', `Remove user "${name}"? They will no longer be able to log in.`, () => {
+    users.splice(i, 1);
+    saveUsers(users);
+    renderUserList();
+    toast(`🗑️ User "${name}" removed.`);
+  });
+};
+
+// ─────────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────────
+(async function init() {
+  // ── Auth check first ──
+  await ensureDefaultUser();
+  const savedLogo = localStorage.getItem(LOGO_KEY);
+  if (savedLogo) applyLogo(savedLogo);
+  const session = sessionStorage.getItem(SESSION_KEY);
+  if (session) {
+    try {
+      const s = JSON.parse(session);
+      showAppForUser(s.username);
+    } catch(_) { sessionStorage.removeItem(SESSION_KEY); }
+  }
+  // (If no session, login gate stays visible)
+
+  // ── App setup ──
+  document.getElementById('date').value = new Date().toISOString().split('T')[0];
+  addExpense();
+  addAdditionalExpense();
+  onStoreChange();
+  calculateReport();
+  await initFirebase(true);
+
+  document.getElementById('adminPwInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') checkAdminPw();
+  });
+})();
+</script>
+</div><!-- end appWrapper -->
+</body>
+</html>
