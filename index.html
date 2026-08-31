@@ -569,6 +569,7 @@
     <div class="card border-amber-200 bg-amber-50">
       <h3 class="font-bold text-amber-800 mb-1">🔀 Consolidate Old Reports</h3>
       <p class="text-xs text-slate-600 mb-3">Reports now live at one shared location instead of being split by token. If this device previously saved reports under an old token, use this once per device to copy them into the shared history. Existing shared reports are never overwritten.</p>
+      <p class="text-xs text-slate-500 mb-2">This device's saved token: <code id="migrateTokenPreview" class="bg-white border border-amber-200 rounded px-1.5 py-0.5 font-mono"></code> — make sure this exact value (character-for-character) is a key in your Firebase rules.</p>
       <button onclick="migrateOldReports()" class="btn btn-dark text-sm">🔀 Migrate This Device's Old Reports</button>
       <p id="migrateStatus" class="text-xs text-slate-500 mt-2"></p>
     </div>
@@ -1326,6 +1327,8 @@ function loadAdminFields() {
   const tokenEl = document.getElementById('cfg_accessToken');
   if (tokenEl) tokenEl.value = savedToken;
   updateFirebaseRulesBox();
+  const migratePreview = document.getElementById('migrateTokenPreview');
+  if (migratePreview) migratePreview.textContent = savedToken ? `"${savedToken}"` : '(none saved on this device)';
 
   const tgRaw = localStorage.getItem(TG_CONFIG_KEY);
   if (tgRaw) {
@@ -1488,15 +1491,18 @@ window.migrateOldReports = async function() {
   showConfirm('🔀', 'Migrate Old Reports', `This will copy any reports saved on this device under the old token "${oldToken}" into the shared history. Existing shared reports are kept as-is. Continue?`, async () => {
     statusEl.textContent = 'Migrating…';
     let copied = 0, skipped = 0, empty = 0;
+    let currentPath = '';
     try {
       for (const store of ['MAIN', 'BRANCH']) {
         const oldBranch = store === 'MAIN' ? 'reports_main' : 'reports_branch';
         const oldPath = `${oldToken}/${oldBranch}`;
+        currentPath = oldPath;
         const snap = await get(ref(db, oldPath));
         if (!snap.exists()) { empty++; continue; }
         const data = snap.val();
         for (const dateKey of Object.keys(data)) {
           const newPath = `${storeDbPath(store)}/${dateKey}`;
+          currentPath = newPath;
           const existing = await get(ref(db, newPath));
           if (existing.exists()) { skipped++; continue; }
           await set(ref(db, newPath), data[dateKey]);
@@ -1507,8 +1513,10 @@ window.migrateOldReports = async function() {
       toast(`🔀 Migration complete: ${copied} copied, ${skipped} skipped.`);
       if (document.getElementById('page-history').classList.contains('active')) loadHistory();
     } catch(e) {
-      statusEl.textContent = '❌ Migration failed: ' + e.message;
-      toast('❌ Migration failed: ' + e.message);
+      const msg = `❌ Migration failed at path "${currentPath}" (token used: "${oldToken}"): ${e.message}`;
+      statusEl.textContent = msg;
+      toast('❌ Migration failed — see details below the button.', 5000);
+      console.error('Migration error at', currentPath, e);
     }
   });
 };
