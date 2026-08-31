@@ -471,7 +471,7 @@
     <!-- Firebase Config -->
     <div class="card border-indigo-200">
       <h3 class="font-bold text-slate-800 mb-1">🔥 Firebase Configuration</h3>
-      <p class="text-xs text-slate-500 mb-4">Paste your Firebase project config. Data is stored under your secret token path in Firebase, so only devices with the correct token can access it.</p>
+      <p class="text-xs text-slate-500 mb-4">Paste your Firebase project config. Reports are stored at one fixed, shared location — every device with this config sees the same history, regardless of the note below.</p>
       <div class="space-y-3">
         <div><label class="lbl">API Key</label><input type="text" id="cfg_apiKey" class="field" placeholder="AIzaSy…"></div>
         <div><label class="lbl">Auth Domain</label><input type="text" id="cfg_authDomain" class="field" placeholder="your-app.firebaseapp.com"></div>
@@ -481,12 +481,12 @@
         <div><label class="lbl">Messaging Sender ID</label><input type="text" id="cfg_messagingSenderId" class="field" placeholder="123456789"></div>
         <div><label class="lbl">App ID</label><input type="text" id="cfg_appId" class="field" placeholder="1:123456789:web:abc…"></div>
         <div class="mt-2 pt-3 border-t border-slate-200">
-          <label class="lbl">🔑 Secret Access Token <span class="font-normal text-slate-400">(required — must match Firebase rules)</span></label>
+          <label class="lbl">🔑 Access Note <span class="font-normal text-slate-400">(optional — no longer affects where data is stored)</span></label>
           <div class="flex gap-2">
             <input type="text" id="cfg_accessToken" class="field font-mono" placeholder="e.g. sr_ramos_2024_secret">
             <button onclick="generateToken()" class="btn btn-ghost text-sm whitespace-nowrap">🎲 Generate</button>
           </div>
-          <p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">⚠️ This token is the key to your database. Set it once, copy it to all authorized devices, and paste it into your Firebase rules (see instructions below). Changing it will lock out all devices until updated.</p>
+          <p class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mt-2">ℹ️ Reports are now always saved to the same shared location, so this value is just a local label — it's kept for reference only and can differ between devices without splitting your data. Real protection comes from the Firebase rules below and whoever you give the config to.</p>
         </div>
       </div>
       <div class="flex gap-2 mt-4">
@@ -496,7 +496,7 @@
       <!-- Firebase Rules Instructions -->
       <div class="mt-4 pt-4 border-t border-slate-200">
         <p class="text-xs font-semibold text-slate-700 mb-2">📋 Firebase Realtime Database Rules</p>
-        <p class="text-xs text-slate-500 mb-2">Copy and paste these rules into your Firebase Console → Realtime Database → Rules. Replace <code class="bg-slate-100 px-1 rounded">YOUR_TOKEN_HERE</code> with your actual secret token above.</p>
+        <p class="text-xs text-slate-500 mb-2">Copy and paste these rules into your Firebase Console → Realtime Database → Rules. This opens the single shared <code class="bg-slate-100 px-1 rounded">sales_reports</code> node used by every device — no token to keep in sync.</p>
         <pre id="firebaseRulesBox" class="bg-slate-900 text-green-400 text-xs rounded-lg p-3 overflow-x-auto leading-relaxed">{
   "rules": {
     "YOUR_TOKEN_HERE": {
@@ -506,7 +506,7 @@
   }
 }</pre>
         <button onclick="copyFirebaseRules()" class="btn btn-ghost text-xs mt-2">📋 Copy Rules</button>
-        <p class="text-xs text-slate-400 mt-1">After saving the token above, the rules box will update automatically with your token filled in.</p>
+        <p class="text-xs text-slate-400 mt-1">This rule set is fixed — you only need to paste it into Firebase once.</p>
       </div>
     </div>
 
@@ -563,6 +563,14 @@
         </div>
         <button onclick="removeLogo()" class="btn btn-ghost text-sm text-red-500 border-red-200 hover:bg-red-50">🗑️ Remove</button>
       </div>
+    </div>
+
+    <!-- Consolidate Old Reports -->
+    <div class="card border-amber-200 bg-amber-50">
+      <h3 class="font-bold text-amber-800 mb-1">🔀 Consolidate Old Reports</h3>
+      <p class="text-xs text-slate-600 mb-3">Reports now live at one shared location instead of being split by token. If this device previously saved reports under an old token, use this once per device to copy them into the shared history. Existing shared reports are never overwritten.</p>
+      <button onclick="migrateOldReports()" class="btn btn-dark text-sm">🔀 Migrate This Device's Old Reports</button>
+      <p id="migrateStatus" class="text-xs text-slate-500 mt-2"></p>
     </div>
 
     <!-- Danger Zone -->
@@ -641,17 +649,10 @@ const TG_CONFIG_KEY = 'sr_tg_config';
 // ─────────────────────────────────────────────────
 async function initFirebase(silent = false) {
   const raw = localStorage.getItem(FB_CONFIG_KEY);
-  const token = localStorage.getItem(FB_TOKEN_KEY) || '';
   const statusEl = document.getElementById('firebaseStatus');
   if (!raw) {
     statusEl.className = 'err';
     statusEl.textContent = '⚠️ Not configured';
-    return false;
-  }
-  if (!token) {
-    statusEl.className = 'err';
-    statusEl.textContent = '⚠️ No access token';
-    if (!silent) toast('⚠️ Set a Secret Access Token in Admin → Firebase Config.');
     return false;
   }
   try {
@@ -660,8 +661,8 @@ async function initFirebase(silent = false) {
     if (getApps().length) await deleteApp(getApps()[0]);
     const app = initializeApp(cfg);
     db = getDatabase(app);
-    // Test with token-gated path
-    await get(ref(db, `${token}/reports_main`));
+    // Test against the fixed, shared report path
+    await get(ref(db, 'sales_reports/main'));
     statusEl.className = 'ok';
     statusEl.textContent = '🟢 Firebase OK';
     if (!silent) toast('✅ Firebase connected!');
@@ -679,9 +680,11 @@ async function initFirebase(silent = false) {
 //  HELPERS
 // ─────────────────────────────────────────────────
 function storeDbPath(store) {
-  const token = localStorage.getItem(FB_TOKEN_KEY) || 'default';
-  const branch = store === 'MAIN' ? 'reports_main' : 'reports_branch';
-  return `${token}/${branch}`;
+  // Fixed path — no longer keyed by the secret token, so all authorized
+  // devices read/write the same location regardless of what token they
+  // have saved locally (or whether it was ever regenerated).
+  const branch = store === 'MAIN' ? 'main' : 'branch';
+  return `sales_reports/${branch}`;
 }
 
 function toast(msg, dur = 2800) {
@@ -1322,7 +1325,7 @@ function loadAdminFields() {
   const savedToken = localStorage.getItem(FB_TOKEN_KEY) || '';
   const tokenEl = document.getElementById('cfg_accessToken');
   if (tokenEl) tokenEl.value = savedToken;
-  updateFirebaseRulesBox(savedToken);
+  updateFirebaseRulesBox();
 
   const tgRaw = localStorage.getItem(TG_CONFIG_KEY);
   if (tgRaw) {
@@ -1335,13 +1338,12 @@ function loadAdminFields() {
   renderUserList();
 }
 
-function updateFirebaseRulesBox(token) {
+function updateFirebaseRulesBox() {
   const box = document.getElementById('firebaseRulesBox');
   if (!box) return;
-  const t = token || 'YOUR_TOKEN_HERE';
   box.textContent = `{
   "rules": {
-    "${t}": {
+    "sales_reports": {
       ".read": true,
       ".write": true
     }
@@ -1355,8 +1357,7 @@ window.generateToken = function() {
     .map(b => chars[b % chars.length]).join('');
   const token = 'sr_' + rand;
   document.getElementById('cfg_accessToken').value = token;
-  updateFirebaseRulesBox(token);
-  toast('🎲 Token generated — save config to apply.');
+  toast('🎲 Note generated — save config to apply.');
 };
 
 window.copyFirebaseRules = function() {
@@ -1453,19 +1454,16 @@ window.saveFirebaseConfig = async function() {
   };
   const token = document.getElementById('cfg_accessToken').value.trim();
   if (!cfg.apiKey || !cfg.databaseURL) { toast('⚠️ API Key and Database URL are required.'); return; }
-  if (!token) { toast('⚠️ A Secret Access Token is required.'); return; }
   localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg));
   localStorage.setItem(FB_TOKEN_KEY, token);
-  updateFirebaseRulesBox(token);
+  updateFirebaseRulesBox();
   await initFirebase(false);
 };
 
 window.testFirebase = async function() {
   if (!db) { toast('⚠️ Firebase not connected yet. Save config first.'); return; }
-  const token = localStorage.getItem(FB_TOKEN_KEY) || '';
-  if (!token) { toast('⚠️ No access token set.'); return; }
   try {
-    await get(ref(db, `${token}/reports_main`));
+    await get(ref(db, 'sales_reports/main'));
     toast('✅ Firebase connection test OK!');
   } catch(e) {
     toast('❌ Test failed: ' + e.message);
@@ -1479,6 +1477,40 @@ window.saveTelegramConfig = function() {
   };
   localStorage.setItem(TG_CONFIG_KEY, JSON.stringify(tg));
   toast('✅ Telegram settings saved.');
+};
+
+window.migrateOldReports = async function() {
+  const statusEl = document.getElementById('migrateStatus');
+  if (!db) { toast('⚠️ Firebase not connected.'); return; }
+  const oldToken = (localStorage.getItem(FB_TOKEN_KEY) || '').trim();
+  if (!oldToken) { toast('⚠️ No old token saved on this device — nothing to migrate.'); return; }
+
+  showConfirm('🔀', 'Migrate Old Reports', `This will copy any reports saved on this device under the old token "${oldToken}" into the shared history. Existing shared reports are kept as-is. Continue?`, async () => {
+    statusEl.textContent = 'Migrating…';
+    let copied = 0, skipped = 0, empty = 0;
+    try {
+      for (const store of ['MAIN', 'BRANCH']) {
+        const oldBranch = store === 'MAIN' ? 'reports_main' : 'reports_branch';
+        const oldPath = `${oldToken}/${oldBranch}`;
+        const snap = await get(ref(db, oldPath));
+        if (!snap.exists()) { empty++; continue; }
+        const data = snap.val();
+        for (const dateKey of Object.keys(data)) {
+          const newPath = `${storeDbPath(store)}/${dateKey}`;
+          const existing = await get(ref(db, newPath));
+          if (existing.exists()) { skipped++; continue; }
+          await set(ref(db, newPath), data[dateKey]);
+          copied++;
+        }
+      }
+      statusEl.textContent = `✅ Done — ${copied} report(s) copied, ${skipped} already present, ${empty} store(s) had no old data under this token.`;
+      toast(`🔀 Migration complete: ${copied} copied, ${skipped} skipped.`);
+      if (document.getElementById('page-history').classList.contains('active')) loadHistory();
+    } catch(e) {
+      statusEl.textContent = '❌ Migration failed: ' + e.message;
+      toast('❌ Migration failed: ' + e.message);
+    }
+  });
 };
 
 window.clearStoreData = function(store) {
