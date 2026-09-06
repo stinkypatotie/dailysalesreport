@@ -688,6 +688,14 @@ function storeDbPath(store) {
   return `sales_reports/${branch}`;
 }
 
+function storeMetaPath(store) {
+  // Shared per-store metadata (currently just the opening cash carried
+  // over from the last closing) — same fixed path for every device,
+  // mirroring storeDbPath, so opening cash stays in sync across devices.
+  const branch = store === 'MAIN' ? 'main' : 'branch';
+  return `sales_meta/${branch}`;
+}
+
 function toast(msg, dur = 2800) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -739,7 +747,7 @@ window.showPage = function(id) {
 // ─────────────────────────────────────────────────
 //  STORE CHANGE
 // ─────────────────────────────────────────────────
-window.onStoreChange = function() {
+window.onStoreChange = async function() {
   const store = document.getElementById('storeSelect').value;
   const isMain = store === 'MAIN';
   document.getElementById('storeBadgeForm').textContent = store;
@@ -747,13 +755,28 @@ window.onStoreChange = function() {
   document.getElementById('reportStoreBadge').textContent = store;
   document.getElementById('reportStoreBadge').className = 'store-badge ' + (isMain ? 'badge-main' : 'badge-branch');
 
-  // Load closing funds
-  const key = 'closing_' + store.toLowerCase();
-  const saved = localStorage.getItem(key);
+  // Load opening cash (carried over from the last closing). This now comes
+  // from Firebase so every device sees the same value; the localStorage
+  // copy is only a fallback for when Firebase isn't reachable.
   const badge = document.getElementById('prevClosingBadge');
   const note  = document.getElementById('prevClosingNote');
-  if (saved !== null) {
-    const amt = parseFloat(saved);
+  const localKey = 'closing_' + store.toLowerCase();
+  let amt = null;
+
+  if (db) {
+    try {
+      const snap = await get(ref(db, storeMetaPath(store)));
+      if (snap.exists() && snap.val().openingCash != null) {
+        amt = parseFloat(snap.val().openingCash);
+      }
+    } catch(_) { /* fall through to local cache below */ }
+  }
+  if (amt === null) {
+    const cached = localStorage.getItem(localKey);
+    if (cached !== null) amt = parseFloat(cached);
+  }
+
+  if (amt !== null && !isNaN(amt)) {
     document.getElementById('openingCash').value = amt.toFixed(2);
     badge.classList.remove('hidden');
     note.textContent = `Opening cash loaded from ${store}'s last closing: ${peso(amt)}`;
@@ -990,7 +1013,7 @@ window.saveReportToFirebase = async function() {
 // ─────────────────────────────────────────────────
 //  CLOSING FUNDS
 // ─────────────────────────────────────────────────
-window.saveClosingFunds = function() {
+window.saveClosingFunds = async function() {
   const store = document.getElementById('storeSelect').value;
   // Read directly from the bill/coin inputs, same logic as calculateReport
   const b200 = (parseFloat(document.getElementById('bill200').value) || 0) * 200;
@@ -1002,8 +1025,21 @@ window.saveClosingFunds = function() {
   const c1   = (parseFloat(document.getElementById('coin1').value)   || 0) * 1;
   const closing = b200 + b100 + b50 + b20 + c10 + c5 + c1;
   const key = 'closing_' + store.toLowerCase();
+
+  // Always keep a local cache so this still works if Firebase is briefly
+  // unreachable, but Firebase is now the source of truth across devices.
   localStorage.setItem(key, closing.toFixed(2));
-  toast(`✅ Closing funds (${peso(closing)}) saved for ${store}.`);
+
+  if (!db) {
+    toast(`⚠️ Saved locally only (Firebase not connected) — other devices won't see this yet.`);
+    return;
+  }
+  try {
+    await set(ref(db, storeMetaPath(store)), { openingCash: closing, savedAt: new Date().toISOString() });
+    toast(`✅ Closing funds (${peso(closing)}) saved for ${store} — synced to all devices.`);
+  } catch(e) {
+    toast(`⚠️ Saved locally, but sync failed: ` + e.message);
+  }
 };
 
 // ─────────────────────────────────────────────────
@@ -1237,14 +1273,14 @@ window.deleteReport = function() {
   });
 };
 
-window.loadReportIntoForm = function() {
+window.loadReportIntoForm = async function() {
   if (!selectedHistReport) return;
   const d = selectedHistReport.data;
   closeHistDetail();
   showPage('report');
 
   document.getElementById('storeSelect').value = d.store;
-  onStoreChange();
+  await onStoreChange();
   document.getElementById('date').value = d.date;
   document.getElementById('openingCash').value = d.openingCash || '';
   document.getElementById('sales').value = d.sales || '';
@@ -1685,9 +1721,9 @@ window.removeUser = function(i) {
   document.getElementById('date').value = new Date().toISOString().split('T')[0];
   addExpense();
   addAdditionalExpense();
-  onStoreChange();
   calculateReport();
-  await initFirebase(true);
+  await initFirebase(true);   // connect first so opening cash loads from the shared source
+  await onStoreChange();
 
   document.getElementById('adminPwInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') checkAdminPw();
