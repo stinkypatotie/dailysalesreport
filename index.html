@@ -638,6 +638,15 @@ let expenses = [];
 let additionalExpenses = [];
 let selectedHistReport = null;   // { store, dateKey, data }
 let confirmCallback = null;
+let rowIdCounter = 0;
+
+// Guaranteed-unique id for dynamically added rows. Date.now() alone can
+// return the same millisecond for several calls in a tight loop (e.g. when
+// restoring a saved report with multiple expense lines), which caused
+// duplicate DOM ids and values landing on the wrong row.
+function nextRowId() {
+  return `${Date.now()}_${rowIdCounter++}`;
+}
 
 const DEFAULT_ADMIN_PW = 'admin1234';
 const ADMIN_PW_KEY = 'sr_admin_pw';
@@ -798,7 +807,7 @@ function trashIcon() {
 }
 
 window.addExpense = function() {
-  const id = Date.now();
+  const id = nextRowId();
   expenses.push(id);
   const div = document.createElement('div');
   div.id = `expense-${id}`;
@@ -818,7 +827,7 @@ window.removeExpense = function(id) {
 };
 
 window.addAdditionalExpense = function() {
-  const id = Date.now();
+  const id = nextRowId();
   additionalExpenses.push(id);
   const div = document.createElement('div');
   div.id = `addExp-${id}`;
