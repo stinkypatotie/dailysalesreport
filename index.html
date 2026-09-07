@@ -699,10 +699,12 @@ function storeDbPath(store) {
 
 function storeMetaPath(store) {
   // Shared per-store metadata (currently just the opening cash carried
-  // over from the last closing) — same fixed path for every device,
-  // mirroring storeDbPath, so opening cash stays in sync across devices.
-  const branch = store === 'MAIN' ? 'main' : 'branch';
-  return `sales_meta/${branch}`;
+  // over from the last closing). Stored as a special key *inside* the
+  // same sales_reports/{branch} tree (rather than a separate top-level
+  // node) so it's covered by the existing Firebase security rules without
+  // needing any rule changes. "_opening_cash" can never collide with a
+  // real report date (those are always "YYYY-MM-DD").
+  return `${storeDbPath(store)}/_opening_cash`;
 }
 
 function toast(msg, dur = 2800) {
