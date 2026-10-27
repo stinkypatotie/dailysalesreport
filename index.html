@@ -274,6 +274,31 @@
         </div>
       </div>
 
+      <!-- Loyverse Fetch (Net Sales + GCash by date range) -->
+      <div class="card border-emerald-300 bg-emerald-50">
+        <div class="flex items-center justify-between mb-3">
+          <p class="font-bold text-emerald-800">☁️ Fetch from Loyverse</p>
+          <button type="button" onclick="document.getElementById('lvCfgBox').classList.toggle('hidden')" class="text-xs text-emerald-700 underline">⚙️ Loyverse settings</button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div><label class="lbl">From <span class="font-normal text-xs">(blank = report date)</span></label><input type="date" id="lvFrom" class="field"></div>
+          <div><label class="lbl">To <span class="font-normal text-xs">(blank = From)</span></label><input type="date" id="lvTo" class="field"></div>
+        </div>
+        <button type="button" id="lvFetchBtn" onclick="fetchLoyverseSales()" class="btn btn-green w-full justify-center">⬇️ Fetch Net Sales &amp; GCash for selected store</button>
+        <p id="lvResult" class="text-xs text-emerald-900 mt-3 hidden leading-relaxed"></p>
+
+        <div id="lvCfgBox" class="hidden mt-4 pt-4 border-t border-emerald-200 space-y-3">
+          <p class="text-xs text-slate-500">Normally loaded automatically from your shared <code class="bg-white px-1 rounded">loyverse_settings</code> in Firebase. Fill these in only if auto-load fails (saved on this device only).</p>
+          <div><label class="lbl">Loyverse API Token</label><input type="password" id="lvToken" class="field" placeholder="Loyverse access token"></div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div><label class="lbl">MAIN Store ID</label><input type="text" id="lvMainId" class="field mono"></div>
+            <div><label class="lbl">BRANCH Store ID</label><input type="text" id="lvBranchId" class="field mono"></div>
+          </div>
+          <div><label class="lbl">Proxy URL</label><input type="text" id="lvProxy" class="field mono" placeholder="https://stockrloyvers.jhudielvendivil.workers.dev"></div>
+          <button type="button" onclick="saveLoyverseCfg()" class="btn btn-dark text-sm">💾 Save Loyverse settings</button>
+        </div>
+      </div>
+
       <!-- Expenses -->
       <div class="card">
         <div class="flex justify-between items-center mb-3">
@@ -1709,6 +1734,127 @@ window.removeUser = function(i) {
     renderUserList();
     toast(`🗑️ User "${name}" removed.`);
   });
+};
+
+// ─────────────────────────────────────────────────
+//  LOYVERSE FETCH — Net Sales + GCash for a date range (additive)
+// ─────────────────────────────────────────────────
+const LV_CFG_KEY = 'sr_lv_cfg';
+const LV_DEFAULT_PROXY = 'https://stockrloyvers.jhudielvendivil.workers.dev';
+const LV_API_PREFIX = '/v1.0';   // adjust if your Worker expects a different path
+
+function lvIdOf(v) { return (v && typeof v === 'object') ? (v.id || v.store_id || v.storeId || '') : (v || ''); }
+
+async function lvGetConfig() {
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(LV_CFG_KEY) || '{}'); } catch(_) {}
+  let fb = {};
+  if (db) {
+    try { const s = await get(ref(db, 'loyverse_settings')); if (s.exists()) fb = s.val() || {}; } catch(_) {}
+  }
+  const first = (o, keys) => { for (const k of keys) if (o && o[k]) return o[k]; return ''; };
+  const map = fb.stores || fb.storeMap || fb.storeMapping || fb.store_mapping || fb.storeIds || {};
+  const fbStore = (n) => lvIdOf(first(map, [n, n.toLowerCase(), n[0] + n.slice(1).toLowerCase()]))
+                      || lvIdOf(first(fb, [n.toLowerCase() + 'StoreId', n.toLowerCase() + '_store_id', n.toLowerCase() + 'Id', n.toLowerCase(), n]));
+  return {
+    token:    local.token    || first(fb, ['token', 'accessToken', 'access_token', 'apiToken', 'api_token']),
+    mainId:   local.mainId   || fbStore('MAIN'),
+    branchId: local.branchId || fbStore('BRANCH'),
+    proxy:   (local.proxy    || first(fb, ['proxyUrl', 'proxy', 'workerUrl']) || LV_DEFAULT_PROXY).replace(/\/+$/, '')
+  };
+}
+
+window.saveLoyverseCfg = function() {
+  const cfg = {
+    token:    document.getElementById('lvToken').value.trim(),
+    mainId:   document.getElementById('lvMainId').value.trim(),
+    branchId: document.getElementById('lvBranchId').value.trim(),
+    proxy:    document.getElementById('lvProxy').value.trim()
+  };
+  localStorage.setItem(LV_CFG_KEY, JSON.stringify(cfg));
+  toast('✅ Loyverse settings saved on this device');
+};
+
+async function lvGet(cfg, endpoint, params) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(`${cfg.proxy}${LV_API_PREFIX}/${endpoint}${qs ? '?' + qs : ''}`, {
+    headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' }
+  });
+  if (!res.ok) {
+    let detail = ''; try { detail = (await res.text()).slice(0, 160); } catch(_) {}
+    throw new Error(`Loyverse ${res.status}${res.status === 401 ? ' (check token)' : ''} ${detail}`);
+  }
+  return res.json();
+}
+
+window.fetchLoyverseSales = async function() {
+  const btn = document.getElementById('lvFetchBtn');
+  const out = document.getElementById('lvResult');
+  const show = (html, bad) => { out.innerHTML = html; out.className = 'text-xs mt-3 leading-relaxed ' + (bad ? 'text-red-600 font-semibold' : 'text-emerald-900'); };
+
+  const store = document.getElementById('storeSelect').value;
+  const from = document.getElementById('lvFrom').value || document.getElementById('date').value;
+  const to   = document.getElementById('lvTo').value || from;
+  if (!from) return show('⚠️ Pick a date first.', true);
+  if (from > to) return show('⚠️ "From" date is after "To" date.', true);
+
+  btn.disabled = true; btn.textContent = '⏳ Fetching…';
+  try {
+    const cfg = await lvGetConfig();
+    const storeId = store === 'MAIN' ? cfg.mainId : cfg.branchId;
+    if (!cfg.token || !storeId) {
+      document.getElementById('lvCfgBox').classList.remove('hidden');
+      document.getElementById('lvToken').value    = cfg.token || '';
+      document.getElementById('lvMainId').value   = cfg.mainId || '';
+      document.getElementById('lvBranchId').value = cfg.branchId || '';
+      document.getElementById('lvProxy').value    = cfg.proxy || '';
+      throw new Error(`Missing Loyverse ${!cfg.token ? 'token' : store + ' store ID'} — fill in Loyverse settings below.`);
+    }
+
+    // Philippines is UTC+8 (no DST) → convert local day bounds to UTC
+    const min = new Date(`${from}T00:00:00+08:00`).toISOString();
+    const max = new Date(`${to}T23:59:59.999+08:00`).toISOString();
+
+    let net = 0, gcash = 0, sales = 0, refunds = 0, cancelled = 0, cursor = '', pages = 0;
+    let ptMap = null;   // payment_type_id → name (only loaded if receipts lack names)
+
+    do {
+      const params = { created_at_min: min, created_at_max: max, store_id: storeId, limit: 250 };
+      if (cursor) params.cursor = cursor;
+      const data = await lvGet(cfg, 'receipts', params);
+      for (const r of (data.receipts || [])) {
+        if (r.cancelled_at) { cancelled++; continue; }
+        const sign = r.receipt_type === 'REFUND' ? -1 : 1;
+        sign === 1 ? sales++ : refunds++;
+        net += sign * Number(r.total_money || 0);
+        for (const p of (r.payments || [])) {
+          let name = p.name || '';
+          if (!name && p.payment_type_id) {
+            if (!ptMap) {
+              ptMap = {};
+              try { for (const t of ((await lvGet(cfg, 'payment_types', {})).payment_types || [])) ptMap[t.id] = t.name; } catch(_) {}
+            }
+            name = ptMap[p.payment_type_id] || '';
+          }
+          if (/g[\s-]?cash/i.test(name)) gcash += sign * Number(p.money_amount || 0);
+        }
+      }
+      cursor = data.cursor || '';
+    } while (cursor && ++pages < 200);
+
+    document.getElementById('sales').value = net.toFixed(2);
+    document.getElementById('gcash').value = gcash.toFixed(2);
+    calculateReport();
+
+    const range = from === to ? from : `${from} → ${to}`;
+    show(`✅ <b>${store}</b> · ${range}<br>Net Sales: <b class="mono">${peso(net)}</b> &nbsp;|&nbsp; GCash: <b class="mono">${peso(gcash)}</b><br>` +
+         `<span class="text-slate-500">${sales} sales, ${refunds} refunds${cancelled ? ', ' + cancelled + ' cancelled (skipped)' : ''} · Net = sales total − refunds (tax included)</span>`);
+    toast('☁️ Loyverse data loaded');
+  } catch (e) {
+    show('❌ ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇️ Fetch Net Sales & GCash for selected store';
+  }
 };
 
 // ─────────────────────────────────────────────────
