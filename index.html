@@ -278,14 +278,16 @@
       <div class="card border-emerald-300 bg-emerald-50">
         <div class="flex items-center justify-between mb-3">
           <p class="font-bold text-emerald-800">☁️ Fetch from Loyverse</p>
-          <button type="button" onclick="document.getElementById('lvCfgBox').classList.toggle('hidden')" class="text-xs text-emerald-700 underline">⚙️ Loyverse settings</button>
+          <button type="button" onclick="toggleLvCfg()" class="text-xs text-emerald-700 underline">⚙️ Loyverse settings</button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
           <div><label class="lbl">From <span class="font-normal text-xs">(blank = report date)</span></label><input type="date" id="lvFrom" class="field"></div>
           <div><label class="lbl">To <span class="font-normal text-xs">(blank = From)</span></label><input type="date" id="lvTo" class="field"></div>
         </div>
         <button type="button" id="lvFetchBtn" onclick="fetchLoyverseSales()" class="btn btn-green w-full justify-center">⬇️ Fetch Net Sales &amp; GCash for selected store</button>
+        <button type="button" id="dtrBtn" onclick="fetchDtrToExpenses()" class="btn btn-dark w-full justify-center mt-2">👥 Add DTR Payroll to Expenses</button>
         <p id="lvResult" class="text-xs text-emerald-900 mt-3 hidden leading-relaxed"></p>
+        <p id="dtrResult" class="text-xs text-emerald-900 mt-3 leading-relaxed"></p>
 
         <div id="lvCfgBox" class="hidden mt-4 pt-4 border-t border-emerald-200 space-y-3">
           <p class="text-xs text-slate-500">Normally loaded automatically from your shared <code class="bg-white px-1 rounded">loyverse_settings</code> in Firebase. Fill these in only if auto-load fails (saved on this device only).</p>
@@ -295,7 +297,11 @@
             <div><label class="lbl">BRANCH Store ID</label><input type="text" id="lvBranchId" class="field mono"></div>
           </div>
           <div><label class="lbl">Proxy URL</label><input type="text" id="lvProxy" class="field mono" placeholder="https://stockrloyvers.jhudielvendivil.workers.dev"></div>
-          <button type="button" onclick="saveLoyverseCfg()" class="btn btn-dark text-sm">💾 Save Loyverse settings</button>
+          <div class="flex gap-2 flex-wrap">
+            <button type="button" onclick="saveLoyverseCfg()" class="btn btn-dark text-sm">💾 Save Loyverse settings</button>
+            <button type="button" onclick="testLoyverseCfg()" class="btn btn-ghost text-sm">🔌 Test token &amp; load stores</button>
+          </div>
+          <div id="lvStores" class="text-xs space-y-1"></div>
         </div>
       </div>
 
@@ -1777,15 +1783,54 @@ window.saveLoyverseCfg = function() {
 
 async function lvGet(cfg, endpoint, params) {
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${cfg.proxy}${LV_API_PREFIX}/${endpoint}${qs ? '?' + qs : ''}`, {
-    headers: { 'Authorization': 'Bearer ' + cfg.token, 'Accept': 'application/json' }
-  });
+  const url = `${cfg.proxy}${LV_API_PREFIX}/${endpoint}${qs ? '?' + qs : ''}`;
+  let res;
+  try {
+    res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + cfg.token } });
+  } catch (e) {
+    throw new Error(`Cannot reach the proxy (${cfg.proxy}). Check the Proxy URL, and open this page from your GitHub Pages site (the Worker blocks other origins).`);
+  }
   if (!res.ok) {
-    let detail = ''; try { detail = (await res.text()).slice(0, 160); } catch(_) {}
-    throw new Error(`Loyverse ${res.status}${res.status === 401 ? ' (check token)' : ''} ${detail}`);
+    let detail = ''; try { detail = (await res.text()).slice(0, 200); } catch(_) {}
+    throw new Error(`Loyverse ${res.status} on /${endpoint}${res.status === 401 ? ' — token not accepted' : ''} ${detail}`);
   }
   return res.json();
 }
+
+window.toggleLvCfg = async function() {
+  const box = document.getElementById('lvCfgBox');
+  box.classList.toggle('hidden');
+  if (box.classList.contains('hidden')) return;
+  const cfg = await lvGetConfig();            // saved on this device, else from Firebase if readable
+  const set = (id, v) => { const el = document.getElementById(id); if (el && !el.value) el.value = v || ''; };
+  set('lvToken', cfg.token); set('lvMainId', cfg.mainId); set('lvBranchId', cfg.branchId); set('lvProxy', cfg.proxy);
+};
+
+window.testLoyverseCfg = async function() {
+  const list = document.getElementById('lvStores');
+  const token = document.getElementById('lvToken').value.trim();
+  const proxy = (document.getElementById('lvProxy').value.trim() || LV_DEFAULT_PROXY).replace(/\/+$/, '');
+  if (!token) { list.innerHTML = '<span class="text-red-600 font-semibold">Enter the token first.</span>'; return; }
+  list.textContent = '⏳ Testing…';
+  try {
+    const data = await lvGet({ proxy, token }, 'stores', {});
+    const stores = data.stores || [];
+    if (!stores.length) { list.innerHTML = '<span class="text-amber-700">Token works, but no stores were returned.</span>'; return; }
+    list.innerHTML = '<p class="text-emerald-800 font-semibold">✅ Token works. Tap to assign each store:</p>' + stores.map(st =>
+      `<div class="flex items-center gap-2 flex-wrap bg-white rounded p-2">
+         <span class="font-semibold">${String(st.name).replace(/</g, '&lt;')}</span>
+         <button type="button" class="btn btn-primary text-xs py-1 px-2" onclick="lvPickStore('lvMainId','${st.id}')">Use as MAIN</button>
+         <button type="button" class="btn btn-cyan text-xs py-1 px-2" onclick="lvPickStore('lvBranchId','${st.id}')">Use as BRANCH</button>
+       </div>`).join('');
+  } catch (e) {
+    list.innerHTML = '<span class="text-red-600 font-semibold">❌ ' + e.message.replace(/</g, '&lt;') + '</span>';
+  }
+};
+
+window.lvPickStore = function(fieldId, id) {
+  document.getElementById(fieldId).value = id;
+  toast('Store ID filled in — press Save');
+};
 
 window.fetchLoyverseSales = async function() {
   const btn = document.getElementById('lvFetchBtn');
@@ -1854,6 +1899,122 @@ window.fetchLoyverseSales = async function() {
     show('❌ ' + e.message, true);
   } finally {
     btn.disabled = false; btn.textContent = '⬇️ Fetch Net Sales & GCash for selected store';
+  }
+};
+
+// ─────────────────────────────────────────────────
+//  DTR → EXPENSES (employee name, daily rate, overtime for the selected date range)
+//  Reads the DTR app's Firebase (read-only) via REST so it never touches this app's own Firebase connection.
+// ─────────────────────────────────────────────────
+const DTR_API_KEY  = 'AIzaSyDbeMGD1rdPMoikNh7gqGmHYxzJ3kolBdE';
+const DTR_DB_URL   = 'https://sirramosds-dtrapp-default-rtdb.asia-southeast1.firebasedatabase.app';
+const DTR_AUTH_KEY = 'sr_dtr_auth';
+// Mirrors RATES in the DTR app (payroll uses these per position)
+const DTR_RATES = { regular:{daily:650,ot:68}, senior:{daily:700,ot:73}, trainee:{daily:500,ot:53}, provisionary:{daily:400,ot:37} };
+
+function dtrHM(t) { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); }
+function dtrHours(i, o) { return (!i || !o) ? 0 : (dtrHM(o) - dtrHM(i)) / 60; }
+function dtrOT(o) { return (!o) ? 0 : (parseInt(String(o).split(':')[0], 10) >= 20 ? 1 : 0); }   // same rule as DTR: clock-out 8PM or later = 1h OT
+
+function dtrCompute(staffList, recs, fullShift, from, to) {
+  const rows = []; let partial = 0, incomplete = 0;
+  for (const s of staffList) {
+    if (!s || !(!s.status || s.status === 'onboard')) continue;           // same staff filter as DTR payroll cards
+    const rt = DTR_RATES[s.position] || { daily: Number(s.dailyRate) || 0, ot: Number(s.otRate) || 0 };
+    let fd = 0, ph = 0, oh = 0;
+    for (const r of recs) {
+      if (!r || r.sid != s.id || r.date < from || r.date > to || r.status) continue;   // r.status = rest/absent/on-call → not a regular worked day
+      const h = dtrHours(r.in, r.out) + dtrHours(r.in2, r.out2);
+      if (h >= fullShift) { fd++; oh += dtrOT(r.out2 || r.out); }
+      else if (h > 0)     { ph += h; partial++; }                           // under full shift → hourly, as DTR payroll does
+      else if (r.in && !r.out) incomplete++;                                // clocked in, never clocked out
+    }
+    const total = Math.ceil(fd * rt.daily) + Math.ceil(ph * (rt.daily / 12)) + Math.ceil(oh * rt.ot);
+    if (total > 0) rows.push({ name: s.name, amount: total, ot: oh, days: fd });
+  }
+  rows.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return { rows, partial, incomplete };
+}
+
+async function dtrGetToken() {
+  let a = null; try { a = JSON.parse(localStorage.getItem(DTR_AUTH_KEY) || 'null'); } catch(_) {}
+  if (a && a.refreshToken) {
+    const r = await fetch(`https://securetoken.googleapis.com/v1/token?key=${DTR_API_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(a.refreshToken)
+    });
+    if (r.ok) { const j = await r.json(); return { idToken: j.id_token, uid: j.user_id }; }
+  }
+  const r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${DTR_API_KEY}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ returnSecureToken: true })
+  });
+  if (!r.ok) throw new Error('DTR sign-in failed (' + r.status + ')');
+  const j = await r.json();
+  localStorage.setItem(DTR_AUTH_KEY, JSON.stringify({ uid: j.localId, refreshToken: j.refreshToken }));
+  return { idToken: j.idToken, uid: j.localId };
+}
+
+async function dtrRead(path, tok) {
+  const r = await fetch(`${DTR_DB_URL}/${path}.json?auth=${encodeURIComponent(tok.idToken)}`);
+  if (r.status === 401 || r.status === 403) { const e = new Error('PERMISSION'); e.uid = tok.uid; throw e; }
+  if (!r.ok) throw new Error('DTR database error ' + r.status);
+  return r.json();
+}
+
+const dtrList = v => (Array.isArray(v) ? v : (v ? Object.values(v) : [])).filter(Boolean);
+
+window.fetchDtrToExpenses = async function() {
+  const btn = document.getElementById('dtrBtn');
+  const out = document.getElementById('dtrResult');
+  const show = (html, bad) => { out.innerHTML = html; out.className = 'text-xs mt-3 leading-relaxed ' + (bad ? 'text-red-600 font-semibold' : 'text-emerald-900'); };
+
+  const from = document.getElementById('lvFrom').value || document.getElementById('date').value;
+  const to   = document.getElementById('lvTo').value || from;
+  if (!from) return show('⚠️ Pick a date first.', true);
+  if (from > to) return show('⚠️ "From" date is after "To" date.', true);
+
+  btn.disabled = true; btn.textContent = '⏳ Reading DTR…';
+  try {
+    const tok = await dtrGetToken();
+    const [staffRaw, recRaw, fullRaw] = await Promise.all([
+      dtrRead('staff', tok), dtrRead('records', tok), dtrRead('settings/fullShiftHours', tok)
+    ]);
+    const { rows, partial, incomplete } = dtrCompute(dtrList(staffRaw), dtrList(recRaw), Number(fullRaw) || 9.5, from, to);
+
+    // Remove rows added by a previous DTR fetch, so pressing the button again doesn't duplicate
+    expenses.filter(id => { const el = document.getElementById(`expense-${id}`); return el && el.dataset.dtr; })
+            .forEach(id => removeExpense(id));
+
+    // Reuse untouched blank rows first, then add new ones
+    const blanks = expenses.filter(id => {
+      const el = document.getElementById(`expense-${id}`);
+      return el && !el.dataset.dtr && !document.getElementById(`expAmount-${id}`).value && !document.getElementById(`expDetails-${id}`).value;
+    });
+    for (const r of rows) {
+      let id = blanks.shift();
+      if (!id) { addExpense(); id = expenses[expenses.length - 1]; }
+      document.getElementById(`expAmount-${id}`).value = r.amount;
+      document.getElementById(`expDetails-${id}`).value = r.ot > 0 ? `${r.name} - OT ${r.ot}h` : r.name;
+      document.getElementById(`expense-${id}`).dataset.dtr = '1';
+    }
+    calculateReport();
+
+    const range = from === to ? from : `${from} → ${to}`;
+    const total = rows.reduce((s, r) => s + r.amount, 0);
+    if (!rows.length) return show(`ℹ️ No paid DTR days found for ${range}.`);
+    show(`✅ ${range} · <b>${rows.length}</b> employee(s) added to Expenses · Total <b class="mono">${peso(total)}</b>` +
+         (partial ? `<br><span class="text-slate-500">${partial} partial day(s) paid hourly, same as DTR payroll.</span>` : '') +
+         (incomplete ? `<br><span class="text-amber-700">⚠️ ${incomplete} record(s) have a clock-in but no clock-out and were not counted.</span>` : ''));
+    toast('👥 DTR payroll added to Expenses');
+  } catch (e) {
+    if (e.message === 'PERMISSION') {
+      show(`🔒 The DTR database rejected this device. In Firebase Console (project <b>sirramosds-dtrapp</b>) → Realtime Database → Data, add the node:<br>` +
+           `<code class="select-all bg-white px-1 rounded">allowedUids / ${e.uid} / true</code><br>Then press the button again.`, true);
+    } else {
+      show('❌ ' + e.message, true);
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '👥 Add DTR Payroll to Expenses';
   }
 };
 
