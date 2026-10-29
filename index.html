@@ -1803,22 +1803,22 @@ function renderGcashTable(rows) {
   if (!rows.length) { box.innerHTML = '<p class="text-xs text-slate-500">No GCash payments found in this range.</p>'; return; }
   const dFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
   const tFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
-  const items = rows.map(r => { const d = new Date(r.ts); return { t: d.getTime(), date: dFmt.format(d), time: tFmt.format(d), amount: r.amount, refund: r.refund }; })
+  const items = rows.map(r => { const d = new Date(r.ts); return { t: d.getTime(), date: dFmt.format(d), time: tFmt.format(d), amount: r.amount, refund: r.refund, no: r.no }; })
                     .sort((a, b) => a.t - b.t);
   const groups = {};
   items.forEach(i => (groups[i.date] = groups[i.date] || []).push(i));
   let html = '<p class="text-xs font-bold text-emerald-800 mb-1">GCash payments</p>' +
              '<div class="overflow-x-auto bg-white rounded-lg border border-emerald-200"><table class="w-full text-xs">' +
-             '<thead><tr class="text-left text-slate-500 border-b"><th class="p-2">Date</th><th class="p-2">Time</th><th class="p-2 text-right">Amount</th></tr></thead><tbody>';
+             '<thead><tr class="text-left text-slate-500 border-b"><th class="p-2">Date</th><th class="p-2">Time</th><th class="p-2">Transaction No.</th><th class="p-2 text-right">Amount</th></tr></thead><tbody>';
   let grand = 0;
   Object.keys(groups).sort().forEach(date => {
     const g = groups[date], sub = g.reduce((a, i) => a + i.amount, 0); grand += sub;
-    html += `<tr class="bg-emerald-100 font-bold"><td class="p-2" colspan="2">📅 ${date} · ${g.length} payment${g.length > 1 ? 's' : ''}</td><td class="p-2 text-right mono">${peso(sub)}</td></tr>`;
+    html += `<tr class="bg-emerald-100 font-bold"><td class="p-2" colspan="3">📅 ${date} · ${g.length} payment${g.length > 1 ? 's' : ''}</td><td class="p-2 text-right mono">${peso(sub)}</td></tr>`;
     g.forEach(i => {
-      html += `<tr class="border-b border-slate-100 ${i.refund ? 'text-red-600' : ''}"><td class="p-2 text-slate-500">${i.date}</td><td class="p-2 mono">${i.time}${i.refund ? ' (refund)' : ''}</td><td class="p-2 text-right mono">${peso(i.amount)}</td></tr>`;
+      html += `<tr class="border-b border-slate-100 ${i.refund ? 'text-red-600' : ''}"><td class="p-2 text-slate-500">${i.date}</td><td class="p-2 mono">${i.time}${i.refund ? ' (refund)' : ''}</td><td class="p-2 mono">${String(i.no || '—').replace(/</g, '&lt;')}</td><td class="p-2 text-right mono">${peso(i.amount)}</td></tr>`;
     });
   });
-  html += `<tr class="font-bold bg-slate-50"><td class="p-2" colspan="2">Total · ${items.length} payment${items.length > 1 ? 's' : ''}</td><td class="p-2 text-right mono">${peso(grand)}</td></tr></tbody></table></div>`;
+  html += `<tr class="font-bold bg-slate-50"><td class="p-2" colspan="3">Total · ${items.length} payment${items.length > 1 ? 's' : ''}</td><td class="p-2 text-right mono">${peso(grand)}</td></tr></tbody></table></div>`;
   box.innerHTML = html;
 }
 
@@ -1911,7 +1911,7 @@ window.fetchLoyverseSales = async function() {
           if (/g[\s-]?cash/i.test(name)) {
             const amt = sign * Number(p.money_amount || 0);
             gcash += amt;
-            gcashRows.push({ ts: p.paid_at || r.receipt_date || r.created_at, amount: amt, refund: sign < 0 });
+            gcashRows.push({ ts: p.paid_at || r.receipt_date || r.created_at, amount: amt, refund: sign < 0, no: r.receipt_number || '' });
           }
         }
       }
