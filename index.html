@@ -1782,6 +1782,9 @@ window.saveLoyverseCfg = function() {
   toast('✅ Loyverse settings saved on this device');
 };
 
+const lvPhDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
+function lvDay(iso) { const d = new Date(iso); return isNaN(d) ? '' : lvPhDay.format(d); }
+
 async function lvGet(cfg, endpoint, params) {
   const qs = new URLSearchParams(params).toString();
   const url = `${cfg.proxy}${LV_API_PREFIX}/${endpoint}${qs ? '?' + qs : ''}`;
@@ -1883,8 +1886,11 @@ window.fetchLoyverseSales = async function() {
     }
 
     // Philippines is UTC+8 (no DST) → convert local day bounds to UTC
-    const min = new Date(`${from}T00:00:00+08:00`).toISOString();
-    const max = new Date(`${to}T23:59:59.999+08:00`).toISOString();
+    // The API filters by created_at, but Loyverse reports use the receipt's own date (receipt_date).
+    // So fetch a slightly wider window, then keep only receipts whose receipt_date falls inside From–To.
+    const DAY = 86400000;
+    const min = new Date(new Date(`${from}T00:00:00+08:00`).getTime() - DAY).toISOString();
+    const max = new Date(new Date(`${to}T23:59:59.999+08:00`).getTime() + 2 * DAY).toISOString();
 
     let net = 0, gcash = 0, sales = 0, refunds = 0, cancelled = 0, cursor = '', pages = 0;
     const gcashRows = [];
@@ -1895,6 +1901,9 @@ window.fetchLoyverseSales = async function() {
       if (cursor) params.cursor = cursor;
       const data = await lvGet(cfg, 'receipts', params);
       for (const r of (data.receipts || [])) {
+        const when = r.receipt_date || r.created_at;
+        const day = lvDay(when);
+        if (!day || day < from || day > to) continue;          // outside the selected dates
         if (r.cancelled_at) { cancelled++; continue; }
         const sign = r.receipt_type === 'REFUND' ? -1 : 1;
         sign === 1 ? sales++ : refunds++;
@@ -1911,7 +1920,7 @@ window.fetchLoyverseSales = async function() {
           if (/g[\s-]?cash/i.test(name)) {
             const amt = sign * Number(p.money_amount || 0);
             gcash += amt;
-            gcashRows.push({ ts: p.paid_at || r.receipt_date || r.created_at, amount: amt, refund: sign < 0, no: r.receipt_number || '' });
+            gcashRows.push({ ts: when, amount: amt, refund: sign < 0, no: r.receipt_number || '' });
           }
         }
       }
